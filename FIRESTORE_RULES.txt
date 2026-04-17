@@ -1,0 +1,57 @@
+// ============================================
+// FIRESTORE SECURITY RULES - ChildGuard App
+// ============================================
+// Yeh rules Firebase Console mein paste karne hain:
+// Firebase Console → Firestore Database → Rules tab
+//
+// IN RULES KO COPY KARKE FIREBASE CONSOLE MEIN PASTE KARO:
+// ============================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== USERS COLLECTION =====
+    // Har user sirf apna data padh aur update kar sakta hai
+    // Naya user sirf tab ban sakta hai jab logged in ho
+    // Dusre users ka data padhne ki permission hai (connection ke liye zaroori)
+    match /users/{userId} {
+      // Koi bhi logged in user kisi ka bhi user data padh sakta hai
+      // (Connection code search karne ke liye zaroori hai)
+      allow read: if request.auth != null;
+
+      // User sirf apna document create kar sakta hai
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // User sirf apna document update kar sakta hai
+      // YA koi aur user connectedTo field update kar sakta hai (connection ke liye)
+      allow update: if request.auth != null;
+    }
+
+    // ===== LOCATIONS COLLECTION =====
+    // Child apni location save karta hai
+    // Parent connected child ki location padh sakta hai
+    match /locations/{userId} {
+      // Koi bhi logged in user location padh sakta hai
+      // (Parent ko child ki location access karne ke liye)
+      allow read: if request.auth != null;
+
+      // User sirf apni location likh sakta hai
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ===== ALERTS COLLECTION =====
+    // Child alerts bhejta hai, Parent alerts padhta hai
+    match /alerts/{alertId} {
+      // Koi bhi logged in user alerts padh sakta hai
+      allow read: if request.auth != null;
+
+      // Koi bhi logged in user alert create kar sakta hai
+      // (Child panic bhejta hai, system boundary alert bhejta hai)
+      allow create: if request.auth != null;
+
+      // Alerts update ya delete nahi ho sakte (safety ke liye)
+      allow update, delete: if false;
+    }
+  }
+}

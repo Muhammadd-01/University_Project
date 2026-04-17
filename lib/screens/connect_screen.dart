@@ -1,157 +1,120 @@
-// ============================================
-// connect_screen.dart - Parent-Child Connection Screen
-// ============================================
-// Is screen se parent aur child ek dusre se connect hote hain
-// Kaise kaam karta hai:
-//
-// PARENT SIDE:
-// - Parent ko apna 6-digit code dikhta hai (jo register pe generate hua tha)
-// - Parent yeh code child ko batata hai (verbally ya message se)
-//
-// CHILD SIDE:
-// - Child ko ek TextField milta hai jismein parent ka code dalta hai
-// - Code enter karke "Connect" button dabata hai
-// - System Firestore mein dhundta hai kaunsa parent hai is code wala
-// - Match hone pe dono ke documents mein connectedTo field update hoti hai
-//
-// Connection ke baad dono ko green tick dikhta hai "Connected!"
-
+// connect_screen.dart - Parent child connection code se
 import 'package:flutter/material.dart';
 import '../services/firestore_service.dart';
 
 class ConnectScreen extends StatefulWidget {
-  final String role; // "parent" ya "child"
-  final String uid;  // User ki uid
+  final String role, uid;
   const ConnectScreen({super.key, required this.role, required this.uid});
-
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
 }
 
 class _ConnectScreenState extends State<ConnectScreen> {
-  // Controller for code input (child side)
-  final _codeController = TextEditingController();
-  final _firestoreService = FirestoreService();
-
-  String? _connectionCode; // Parent ka 6-digit code
-  String? _connectedTo;    // Connected user ki uid (null agar connected nahi)
+  final _codeC = TextEditingController();
+  final _fs = FirestoreService();
+  String? _code, _connectedTo, _connectedEmail; // Added connectedEmail
   bool _loading = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadData(); // Screen load hote hi user data fetch karo
-  }
+  void initState() { super.initState(); _load(); }
 
-  // _loadData() - Firestore se user ka data fetch karo
-  // Check karo connection code kya hai aur connected hai ya nahi
-  void _loadData() async {
-    final data = await _firestoreService.getUser(widget.uid);
+  void _load() async {
+    final data = await _fs.getUser(widget.uid);
     if (data != null) {
-      setState(() {
-        _connectionCode = data['connectionCode']; // Parent ka code (child ke liye null hoga)
-        _connectedTo = data['connectedTo'];       // Connected user ki uid
-        _loading = false;
+      String? connEmail;
+      if (data['connectedTo'] != null) {
+        // Fetch email of the connected user
+        final otherUser = await _fs.getUser(data['connectedTo']);
+        connEmail = otherUser?['email'];
+      }
+      setState(() { 
+        _code = data['connectionCode']; 
+        _connectedTo = data['connectedTo']; 
+        _connectedEmail = connEmail;
+        _loading = false; 
       });
     }
   }
 
-  // _connect() - Child code enter karke parent se connect ho
   void _connect() async {
-    final code = _codeController.text.trim();
-    if (code.isEmpty) return; // Empty code na bhejo
-
+    if (_codeC.text.trim().isEmpty) return;
     setState(() => _loading = true);
-
-    // connectChild() Firestore mein code se parent dhundta hai
-    // Agar mila toh dono ke connectedTo mein ek dusre ki uid save hoti hai
-    final success = await _firestoreService.connectChild(code, widget.uid);
-
+    final ok = await _fs.connectChild(_codeC.text.trim(), widget.uid);
     if (mounted) {
-      if (success) {
-        // Connection successful!
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connected successfully!')),
-        );
-        _loadData(); // Screen refresh karo taake "Connected!" dikhe
-      } else {
-        // Code galat hai
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid code!')),
-        );
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid code!')));
         setState(() => _loading = false);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connected successfully!')));
+        _load(); 
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Connect')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Agar already connected hai toh green card dikhao
-                  if (_connectedTo != null)
-                    Card(
-                      color: Colors.green[50],
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          '✅ Connected!',
-                          style: TextStyle(fontSize: 20, color: Colors.green[800]),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-
-                  // ===== PARENT VIEW =====
-                  // Parent ko apna 6-digit code dikhao
-                  // Yeh code child ko dena hai
-                  if (widget.role == 'parent' && _connectionCode != null) ...[
-                    const Text('Apna code child ko do:', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 10),
-                    // Code bade font mein dikhao taake easy ho padhna
-                    Text(
-                      _connectionCode!,
-                      style: const TextStyle(
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 8, // Letters ke beech spacing
-                      ),
-                    ),
-                  ],
-
-                  // ===== CHILD VIEW =====
-                  // Child ko code enter karne do (agar abhi connected nahi hai)
-                  if (widget.role == 'child' && _connectedTo == null) ...[
-                    const Text('Parent ka code enter karo:', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 10),
-                    // Code input field
-                    TextField(
-                      controller: _codeController,
-                      keyboardType: TextInputType.number, // Sirf numbers
-                      decoration: const InputDecoration(
-                        labelText: 'Connection Code',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    // Connect button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _connect,
-                        child: const Text('Connect'),
-                      ),
-                    ),
-                  ],
-                ],
+      body: _loading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            // Connection status with Email
+            if (_connectedTo != null)
+              Card(
+                color: Colors.green[50],
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.check_circle, color: Colors.green, size: 28),
+                        SizedBox(width: 12),
+                        Text('Connected!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                      ]),
+                      if (_connectedEmail != null) ...[
+                        const SizedBox(height: 8),
+                        Text('Linked with: $_connectedEmail', style: TextStyle(color: Colors.green[700], fontSize: 13)),
+                      ]
+                    ],
+                  ),
+                ),
               ),
+            const SizedBox(height: 30),
+            // Parent view - show code
+            if (widget.role == 'parent' && _code != null) ...[
+              Icon(Icons.qr_code, size: 60, color: color.primary),
+              const SizedBox(height: 16),
+              const Text('Your Connection Code', style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 12),
+              Card(
+                color: color.primaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+                  child: Text(_code!, style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, letterSpacing: 10, color: color.primary)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text('Share this code with your child', style: TextStyle(color: Colors.grey[600])),
+            ],
+            // Child view - enter code
+            if (widget.role == 'child' && _connectedTo == null) ...[
+              Icon(Icons.link, size: 60, color: color.primary),
+              const SizedBox(height: 16),
+              const Text('Enter Parent\'s Code', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _codeC, keyboardType: TextInputType.number, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, letterSpacing: 8),
+                decoration: const InputDecoration(hintText: '000000'),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: _connect, child: const Text('Connect'))),
+            ],
+          ],
+        ),
       ),
     );
   }
