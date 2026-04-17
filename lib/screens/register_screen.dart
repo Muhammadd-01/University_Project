@@ -11,6 +11,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameC = TextEditingController(); // Added name controller
   final _emailC = TextEditingController();
   final _passC = TextEditingController();
   final _confirmPassC = TextEditingController(); // Added confirm password controller
@@ -22,7 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _register() async {
     // Validation checks
-    if (_emailC.text.isEmpty || _passC.text.isEmpty || _confirmPassC.text.isEmpty) {
+    if (_nameC.text.isEmpty || _emailC.text.isEmpty || _passC.text.isEmpty || _confirmPassC.text.isEmpty) {
       _showError('Please fill in all fields');
       return;
     }
@@ -38,7 +39,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
     try {
       final cred = await _auth.register(_emailC.text.trim(), _passC.text.trim());
-      await FirestoreService().createUser(cred.user!.uid, _emailC.text.trim(), _role);
+      // Pass both name and email to Firestore
+      await FirestoreService().createUser(cred.user!.uid, _emailC.text.trim(), _role, _nameC.text.trim());
       if (mounted) {
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => HomeScreen(role: _role, uid: cred.user!.uid)));
@@ -84,6 +86,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 16),
             Text('Join ChildGuard', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 32),
+            TextField(
+              controller: _nameC,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person_outline)),
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _emailC, 
               keyboardType: TextInputType.emailAddress,

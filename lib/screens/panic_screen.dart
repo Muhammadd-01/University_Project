@@ -13,16 +13,21 @@ class PanicScreen extends StatefulWidget {
 class _PanicScreenState extends State<PanicScreen> {
   final _fs = FirestoreService();
   bool _sending = false, _sent = false;
-  // EventChannel - Android native code se power button events suno
+  
+  // Power button triple press listener
   static const _powerChannel = EventChannel('com.childguard.childguard/power_button');
 
   @override
   void initState() {
     super.initState();
-    // Power button double press listener
     _powerChannel.receiveBroadcastStream().listen((e) {
-      if (e == 'DOUBLE_PRESS') _sendPanic();
+      if (e == 'TRIPLE_PRESS') _sendPanic();
     }, onError: (_) {});
+  }
+
+  // UI Button Tap Logic
+  void _handleButtonTap() {
+    _sendPanic(); // One tap as requested
   }
 
   void _sendPanic() async {
@@ -55,7 +60,7 @@ class _PanicScreenState extends State<PanicScreen> {
             children: [
               // Big panic button
               GestureDetector(
-                onTap: _sendPanic,
+                onTap: _handleButtonTap, // Triple tap logic
                 child: Container(
                   width: 180, height: 180,
                   decoration: BoxDecoration(
@@ -68,7 +73,7 @@ class _PanicScreenState extends State<PanicScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              Text(_sent ? 'Alert Sent!' : 'Tap for Emergency!',
+              Text(_sent ? 'Alert Sent!' : 'Tap for Emergency!', // One tap
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: btnColor)),
               const SizedBox(height: 8),
               if (!_sent) Text('Your parent will be notified immediately', style: TextStyle(color: Colors.grey[600])),
@@ -85,7 +90,7 @@ class _PanicScreenState extends State<PanicScreen> {
                   child: Row(children: [
                     Icon(Icons.lightbulb_outline, color: Colors.amber),
                     SizedBox(width: 12),
-                    Expanded(child: Text('Double-press the power button to trigger alert automatically', style: TextStyle(fontSize: 13, color: Colors.grey))),
+                    Expanded(child: Text('Triple-press the power button to trigger alert automatically', style: TextStyle(fontSize: 13, color: Colors.grey))),
                   ]),
                 ),
               ),

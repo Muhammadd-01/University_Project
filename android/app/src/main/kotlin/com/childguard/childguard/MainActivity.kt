@@ -54,105 +54,28 @@ class MainActivity : FlutterActivity() {
     // Screen off kitni baar hua count karo
     private var pressCount = 0
 
-    // configureFlutterEngine() - Jab Flutter engine ready ho toh yeh call hota hai
-    // Yahan hum EventChannel setup karte hain
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // EventChannel banao - Flutter se communication ke liye
-        // binaryMessenger: Flutter aur native ke beech data bhejne ka raasta
+        // Start the background service
+        val serviceIntent = Intent(this, PanicService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
-
-                // onListen() - Jab Flutter EventChannel sunna shuru kare
-                // Yahan receiver register karte hain
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    eventSink = events // EventSink save karo (baad mein events bhejne ke liye)
-                    registerScreenReceiver() // Screen ON/OFF receiver register karo
+                    eventSink = events
                 }
-
-                // onCancel() - Jab Flutter sunna band kare
-                // Yahan receiver unregister karte hain
                 override fun onCancel(arguments: Any?) {
                     eventSink = null
-                    unregisterScreenReceiver()
                 }
             })
     }
 
-    // registerScreenReceiver() - Screen ON/OFF events sunne ke liye receiver register karo
-    // Yeh dynamically register hota hai (programmatically, AndroidManifest mein nahi)
-    // Kyunke Android security ke liye SCREEN_ON/OFF manifest mein allow nahi karta
-    private fun registerScreenReceiver() {
-        // Naya BroadcastReceiver banao
-        screenReceiver = object : BroadcastReceiver() {
-            // onReceive() - Jab koi screen event aaye toh yeh call hota hai
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    // ===== SCREEN OFF EVENT =====
-                    // Jab user power button dabaye aur screen band ho
-                    Intent.ACTION_SCREEN_OFF -> {
-                        val currentTime = System.currentTimeMillis()
-
-                        // Check karo pichle screen off se kitna time hua
-                        if (currentTime - lastScreenOffTime < DOUBLE_PRESS_THRESHOLD) {
-                            // 1.5 second ke andar dobara screen off hua!
-                            pressCount++
-
-                            // Agar 2 ya zyada baar hua toh DOUBLE PRESS hai
-                            if (pressCount >= 2) {
-                                // Flutter ko "DOUBLE_PRESS" event bhejo
-                                // eventSink?.success() se data Flutter ke EventChannel pe jayega
-                                eventSink?.success("DOUBLE_PRESS")
-                                pressCount = 0 // Counter reset karo
-                            }
-                        } else {
-                            // Pehli baar screen off hua (ya bahut der baad)
-                            pressCount = 1
-                        }
-
-                        // Current time save karo next comparison ke liye
-                        lastScreenOffTime = currentTime
-                    }
-
-                    // ===== SCREEN ON EVENT =====
-                    // Jab screen on ho - hum sirf track kar rahe hain, kuch karna nahi
-                    Intent.ACTION_SCREEN_ON -> {
-                        // Screen on hone pe kuch nahi karna
-                        // Sirf screen off events se double press detect karte hain
-                    }
-                }
-            }
-        }
-
-        // IntentFilter banao - kaunse events sunne hain
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF) // Screen band hone ka event
-            addAction(Intent.ACTION_SCREEN_ON)  // Screen on hone ka event
-        }
-
-        // Receiver register karo system ke saath
-        registerReceiver(screenReceiver, filter)
-    }
-
-    // unregisterScreenReceiver() - Receiver unregister karo
-    // Zaroori hai taake memory leak na ho
-    // Agar register kiya hai toh unregister bhi karna zaroori hai
-    private fun unregisterScreenReceiver() {
-        screenReceiver?.let {
-            try {
-                unregisterReceiver(it) // System se unregister karo
-            } catch (e: Exception) {
-                // Agar already unregistered hai toh exception ignore karo
-            }
-            screenReceiver = null
-        }
-    }
-
-    // onDestroy() - Jab Activity destroy ho (app band ho)
-    // Yahan cleanup karte hain - receiver unregister karo
-    override fun onDestroy() {
-        unregisterScreenReceiver()
-        super.onDestroy()
-    }
+    // Since the service is doing the heavy lifting, we'll just listen for results
+    // if the app needs to show UI feedback. For now, the service handles Firestore.
 }

@@ -1,6 +1,6 @@
-// splash_screen.dart - App ki pehli screen
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firestore_service.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
@@ -28,6 +28,13 @@ class _SplashScreenState extends State<SplashScreen> {
         final data = await FirestoreService().getUser(user.uid);
         
         if (data != null && mounted) {
+          // Save credentials for Native Background Panic Detection
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('uid', user.uid);
+          if (data['connectedTo'] != null) {
+            await prefs.setString('parentId', data['connectedTo']);
+          }
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(

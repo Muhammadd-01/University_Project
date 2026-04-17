@@ -15,10 +15,17 @@ class LocationService {
 
   // Current GPS location lo
   Future<Position?> getCurrentLocation() async {
-    if (!await handlePermission()) return null;
-    return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    );
+    try {
+      if (!await handlePermission()) return null;
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } catch (e) {
+      return null;
+    }
   }
 
   // Do points ke beech distance (meters)

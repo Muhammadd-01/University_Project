@@ -9,6 +9,7 @@ import 'connect_screen.dart';
 import 'map_screen.dart';
 import 'panic_screen.dart';
 import 'alerts_screen.dart';
+import 'safe_zone_screen.dart'; // Added for boundary management
 
 class HomeScreen extends StatefulWidget {
   final String role, uid;
@@ -21,12 +22,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _locationTimer;
   final _locService = LocationService();
   final _fsService = FirestoreService();
+  String? _userName;
+  String _trackingStatus = 'Initializing...'; // Track GPS status
 
   @override
   void initState() {
     super.initState();
-    // Child hai toh location tracking shuru karo
-    if (widget.role == 'child') _startTracking();
+    _loadProfile();
+    _startTracking(); // Everyone tracks for two-way safety
+  }
+
+  void _loadProfile() async {
+    final data = await _fsService.getUser(widget.uid);
+    if (mounted && data != null) setState(() => _userName = data['name']);
   }
 
   void _startTracking() {
@@ -35,10 +43,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _sendLocation() async {
+    final ok = await _locService.handlePermission();
+    if (!ok) {
+      if (mounted) setState(() => _trackingStatus = 'Permission Denied! ❌');
+      return;
+    }
+    
     final pos = await _locService.getCurrentLocation();
     if (pos != null) {
       await _fsService.updateLocation(widget.uid, pos.latitude, pos.longitude);
       _checkBoundary(pos.latitude, pos.longitude);
+      if (mounted) setState(() => _trackingStatus = 'Tracking Active! ✅');
+    } else {
+      if (mounted) setState(() => _trackingStatus = 'GPS Error! ⚠️');
     }
   }
 
@@ -58,9 +75,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() { _locationTimer?.cancel(); super.dispose(); }
 
-  void _logout() async {
-    await AuthService().logout();
-    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+  void _logout() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Close dialog
+              await AuthService().logout();
+              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _navigate(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -92,13 +125,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 16),
                     Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(isParent ? 'Parent Mode' : 'Child Mode',
+                      Text(_userName ?? (isParent ? 'Parent' : 'Child'),
                           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      Text(AuthService().currentUser?.email ?? 'User', // Show Email
+                      Text(AuthService().currentUser?.email ?? '', // Show Email as secondary
                           style: TextStyle(color: color.primary, fontSize: 13, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 2),
                       Text(isParent ? 'Monitoring active' : 'Tracking active',
                           style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      if (!isParent) ...[
+                        const SizedBox(height: 4),
+                        Text(_trackingStatus, style: TextStyle(color: _trackingStatus.contains('Active') ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
                     ]),
                   ],
                 ),
@@ -108,9 +145,11 @@ class _HomeScreenState extends State<HomeScreen> {
             // Menu buttons
             _menuBtn(Icons.link, 'Connect', 'Link parent & child', color.primary,
                 () => _navigate(ConnectScreen(role: widget.role, uid: widget.uid))),
+            _menuBtn(Icons.map, 'Live Map', isParent ? 'View child location' : 'View parent location', Colors.green,
+                () => _navigate(MapScreen(uid: widget.uid, role: widget.role))),
             if (isParent)
-              _menuBtn(Icons.map, 'Live Map', 'View child location', Colors.green,
-                  () => _navigate(MapScreen(uid: widget.uid))),
+              _menuBtn(Icons.shield, 'Safe Zone', 'Manage safety boundaries', Colors.indigo,
+                  () => _navigate(SafeZoneScreen(uid: widget.uid))),
             if (!isParent)
               _menuBtn(Icons.warning_rounded, 'Panic Button', 'Send emergency alert', Colors.red,
                   () => _navigate(PanicScreen(uid: widget.uid))),

@@ -12,7 +12,9 @@ class AlertsScreen extends StatelessWidget {
     final fs = FirestoreService();
     final stream = role == 'parent' ? fs.getAlerts(uid) : fs.getChildAlerts(uid);
     return Scaffold(
-      appBar: AppBar(title: const Text('Alerts')),
+      appBar: AppBar(title: const Text('Alerts'), actions: [
+        IconButton(onPressed: () {}, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+      ]),
       body: StreamBuilder<QuerySnapshot>(
         stream: stream,
         builder: (context, snap) {

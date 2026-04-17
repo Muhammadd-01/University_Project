@@ -6,10 +6,23 @@ class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // User create karo register ke baad
-  Future<void> createUser(String uid, String email, String role) async {
-    final data = {'email': email, 'role': role, 'connectedTo': null};
-    if (role == 'parent') data['connectionCode'] = _generateCode();
+  Future<void> createUser(String uid, String email, String role, String name) async {
+    final Map<String, dynamic> data = {'email': email, 'role': role, 'name': name, 'connectedTo': null};
+    if (role == 'parent') {
+      data['connectionCode'] = _generateCode();
+      data['children'] = []; // Multiple children ke liye array
+    }
     await _db.collection('users').doc(uid).set(data);
+  }
+
+  // Multi-child locations stream (Real-time tracking for all kids)
+  Stream<QuerySnapshot> getMultiLocationStream(List<dynamic> uids) {
+    // Filter out nulls and ensure list is not empty
+    final safeUids = uids.where((id) => id != null).toList();
+    if (safeUids.isEmpty) return const Stream.empty();
+    
+    return _db.collection('locations')
+        .where(FieldPath.documentId, whereIn: safeUids).snapshots();
   }
 
   // 6 digit random code
@@ -21,13 +34,34 @@ class FirestoreService {
     return doc.data();
   }
 
+  // Fetch multiple user profiles by UID
+  Future<List<Map<String, dynamic>>> getChildrenProfiles(List<dynamic> uids) async {
+    if (uids.isEmpty) return [];
+    
+    // Filter out nulls/falsy values
+    final safeUids = uids.where((id) => id != null && id.toString().isNotEmpty).toList();
+    if (safeUids.isEmpty) return [];
+
+    final snapshots = await _db.collection('users')
+        .where(FieldPath.documentId, whereIn: safeUids).get();
+        
+    return snapshots.docs.map((d) {
+      final data = d.data() as Map<String, dynamic>;
+      // Ensure 'uid' is present by using the document ID if missing
+      data['uid'] = d.id;
+      return data;
+    }).toList();
+  }
+
   // Child ko parent se connect karo code se
   Future<bool> connectChild(String code, String childUid) async {
     final query = await _db.collection('users')
         .where('connectionCode', isEqualTo: code).limit(1).get();
     if (query.docs.isEmpty) return false;
     final parentUid = query.docs.first.id;
-    await _db.collection('users').doc(parentUid).update({'connectedTo': childUid});
+    // Parent mein childUID add karo (arrayUnion duplicate se bachata hai)
+    await _db.collection('users').doc(parentUid).update({'children': FieldValue.arrayUnion([childUid])});
+    // Child mein parentUID set karo
     await _db.collection('users').doc(childUid).update({'connectedTo': parentUid});
     return true;
   }
