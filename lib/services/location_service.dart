@@ -19,12 +19,17 @@ class LocationService {
       if (!await handlePermission()) return null;
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 10),
+          accuracy: LocationAccuracy.high, // Better chance to lock on Android
+          timeLimit: Duration(seconds: 15), // Extended timeout
         ),
       );
     } catch (e) {
-      return null;
+      // Falback to last known position if current request times out or fails (Common indoors)
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        return null;
+      }
     }
   }
 

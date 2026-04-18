@@ -36,7 +36,8 @@ class PanicService : Service() {
     private fun registerScreenReceiver() {
         screenReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                val action = intent?.action
+                if (action == Intent.ACTION_SCREEN_OFF || action == Intent.ACTION_SCREEN_ON) {
                     val now = System.currentTimeMillis()
                     if (now - lastOffTime < 1500) {
                         pressCount++
@@ -51,7 +52,9 @@ class PanicService : Service() {
                 }
             }
         }
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        val filter = IntentFilter()
+        filter.addAction(Intent.ACTION_SCREEN_OFF)
+        filter.addAction(Intent.ACTION_SCREEN_ON)
         registerReceiver(screenReceiver, filter)
     }
 

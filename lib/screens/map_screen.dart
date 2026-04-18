@@ -114,10 +114,11 @@ class _MapScreenState extends State<MapScreen> {
       ]),
       body: _loading ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<QuerySnapshot>(
-              stream: _fs.getMultiLocationStream(isParent 
-                ? _childrenProfiles.map((p) => p['uid']?.toString()).whereType<String>().toList()
-                : [(_childrenProfiles.isNotEmpty ? _childrenProfiles[0]['connectedTo']?.toString() : null)]),
+              stream: _fs.getMultiLocationStream(_childrenProfiles.map((p) => p['uid']?.toString()).whereType<String>().toList()),
               builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
                 if (snapshot.hasError) {
                   return Center(child: Padding(
                     padding: const EdgeInsets.all(24.0),
@@ -166,7 +167,7 @@ class _MapScreenState extends State<MapScreen> {
                     const SizedBox(height: 12), 
                     const Text('No locations available yet', style: TextStyle(color: Colors.grey)),
                     const SizedBox(height: 8),
-                    Text('Tracking: ${_childrenProfiles.length} children', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text(isParent ? 'Tracking: ${_childrenProfiles.length} children' : 'Tracking Default Parent', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     TextButton(onPressed: _load, child: const Text('Refresh Connections')),
                   ]));
                 }

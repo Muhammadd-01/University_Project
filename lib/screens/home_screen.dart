@@ -1,6 +1,7 @@
 // home_screen.dart - Main dashboard, role ke hisab se buttons
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
@@ -34,7 +35,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _loadProfile() async {
     final data = await _fsService.getUser(widget.uid);
-    if (mounted && data != null) setState(() => _userName = data['name']);
+    if (mounted && data != null) {
+      setState(() => _userName = data['name']);
+      
+      // Sync SharedPreferences for Native Background Panic Detection
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('uid', widget.uid);
+      if (data['connectedTo'] != null) {
+        await prefs.setString('parentId', data['connectedTo']);
+      }
+    }
   }
 
   void _startTracking() {
