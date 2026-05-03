@@ -37,4 +37,10 @@ class LocationService {
   double getDistance(double lat1, double lng1, double lat2, double lng2) {
     return Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
   }
+
+  // Check if position is within boundary
+  bool isWithinBoundary(double lat, double lng, double bLat, double bLng, double radius) {
+    final dist = getDistance(lat, lng, bLat, bLng);
+    return dist <= radius;
+  }
 }

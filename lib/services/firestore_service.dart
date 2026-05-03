@@ -11,6 +11,7 @@ class FirestoreService {
     if (role == 'parent') {
       data['connectionCode'] = _generateCode();
       data['children'] = []; // Multiple children ke liye array
+      data['coParent'] = null; // Link for Mom/Dad
     }
     await _db.collection('users').doc(uid).set(data);
   }
@@ -111,8 +112,59 @@ class FirestoreService {
     final doc = await _db.collection('users').doc(parentUid).get();
     final data = doc.data();
     if (data != null && data['boundaryRadius'] != null) {
-      return {'lat': data['boundaryLat'], 'lng': data['boundaryLng'], 'radius': data['boundaryRadius']};
+      return {
+        'lat': (data['boundaryLat'] as num).toDouble(),
+        'lng': (data['boundaryLng'] as num).toDouble(),
+        'radius': (data['boundaryRadius'] as num).toDouble()
+      };
     }
     return null;
+  }
+
+  // Emergency Contacts management
+  Future<void> addEmergencyContact(String parentUid, String name, String phone, String countryCode) async {
+    await _db.collection('users').doc(parentUid).update({
+      'emergencyContacts': FieldValue.arrayUnion([
+        {'name': name, 'phone': phone, 'countryCode': countryCode}
+      ])
+    });
+  }
+
+  Future<void> removeEmergencyContact(String parentUid, Map<String, dynamic> contact) async {
+    await _db.collection('users').doc(parentUid).update({
+      'emergencyContacts': FieldValue.arrayRemove([contact])
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getEmergencyContacts(String parentUid) async {
+    final doc = await _db.collection('users').doc(parentUid).get();
+    final data = doc.data();
+    if (data != null && data['emergencyContacts'] != null) {
+      return List<Map<String, dynamic>>.from(data['emergencyContacts']);
+    }
+    return [];
+  }
+
+  // Child's own WhatsApp linking
+  Future<void> linkWhatsApp(String uid, String phone) async {
+    await _db.collection('users').doc(uid).update({
+      'linkedWhatsApp': phone,
+    });
+  }
+
+  // Parent linking (Mom & Dad)
+  Future<bool> linkCoParent(String code, String myUid) async {
+    final query = await _db.collection('users')
+        .where('connectionCode', isEqualTo: code)
+        .where('role', isEqualTo: 'parent').limit(1).get();
+    
+    if (query.docs.isEmpty) return false;
+    final coParentUid = query.docs.first.id;
+    if (coParentUid == myUid) return false;
+
+    // Link both ways
+    await _db.collection('users').doc(myUid).update({'coParent': coParentUid});
+    await _db.collection('users').doc(coParentUid).update({'coParent': myUid});
+    return true;
   }
 }

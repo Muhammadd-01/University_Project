@@ -19,10 +19,22 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChildren();
+    _loadInitialData();
   }
 
-  void _loadChildren() async {
+  void _loadInitialData() async {
+    await _loadChildren();
+    await _loadCurrentBoundary();
+  }
+
+  Map<String, dynamic>? _currentBoundary;
+
+  Future<void> _loadCurrentBoundary() async {
+    final b = await _fs.getBoundary(widget.uid);
+    if (mounted) setState(() => _currentBoundary = b);
+  }
+
+  Future<void> _loadChildren() async {
     final user = await _fs.getUser(widget.uid);
     final List<dynamic> childrenUids = user?['children'] ?? [];
     if (childrenUids.isEmpty) {
@@ -87,7 +99,7 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Child', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                   const Text('Select Child', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const Text('Choose which child to set a boundary for', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -98,22 +110,36 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
                       child: Text(c['name'] ?? c['email'] ?? 'Unknown User'),
                     )).toList(),
                     onChanged: (v) => setState(() => _selectedChildUid = v),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
                       fillColor: Colors.white,
+                      prefixIcon: const Icon(Icons.child_care),
                     ),
                   ),
                   const SizedBox(height: 24),
+                  if (_currentBoundary != null) ...[
+                    Card(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.blue, width: 0.5)),
+                      child: ListTile(
+                        leading: const Icon(Icons.info_outline, color: Colors.blue),
+                        title: const Text('Current Active Zone', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        subtitle: Text('Radius: ${_currentBoundary!['radius'].toStringAsFixed(0)}m\nCenter: ${_currentBoundary!['lat'].toStringAsFixed(4)}, ${_currentBoundary!['lng'].toStringAsFixed(4)}', 
+                          style: const TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   const Text('Safe Radius (meters)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const Text('Alerts will trigger if the child leaves this area', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _radiusController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.radar),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.radar),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       suffixText: 'm',
                       hintText: 'e.g. 500',
                     ),
@@ -124,13 +150,17 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
                     height: 56,
                     child: FilledButton.icon(
                       onPressed: _save,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 4,
+                      ),
                       icon: const Icon(Icons.save),
-                      label: const Text('Save Boundaries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      label: const Text('Activate Safe Zone', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   const Center(
-                    child: Text('Center will be set to child\'s current location', 
+                    child: Text('Note: Center will be set to child\'s current location', 
                       style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic)),
                   ),
                 ],

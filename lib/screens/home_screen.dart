@@ -11,6 +11,8 @@ import 'map_screen.dart';
 import 'panic_screen.dart';
 import 'alerts_screen.dart';
 import 'safe_zone_screen.dart'; // Added for boundary management
+import 'contacts_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeScreen extends StatefulWidget {
   final String role, uid;
@@ -23,8 +25,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _locationTimer;
   final _locService = LocationService();
   final _fsService = FirestoreService();
-  String? _userName;
+   String? _userName;
   String _trackingStatus = 'Initializing...'; // Track GPS status
+  DateTime? _lastAlertTime; // Cooldown for alerts
 
   @override
   void initState() {
@@ -69,16 +72,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Boundary check - child safe zone mein hai ya bahar
+   // Boundary check - child safe zone mein hai ya bahar
   Future<void> _checkBoundary(double lat, double lng) async {
+    if (widget.role == 'parent') return; // Parents don't check their own boundary
+    
+    // Alert cooldown (don't spam alerts more than once every 5 minutes)
+    if (_lastAlertTime != null && DateTime.now().difference(_lastAlertTime!).inMinutes < 5) {
+      return;
+    }
+
     final user = await _fsService.getUser(widget.uid);
     if (user == null || user['connectedTo'] == null) return;
+    
     final boundary = await _fsService.getBoundary(user['connectedTo']);
     if (boundary == null) return;
-    final dist = _locService.getDistance(boundary['lat'], boundary['lng'], lat, lng);
-    if (dist > boundary['radius']) {
+    
+    final isInside = _locService.isWithinBoundary(lat, lng, boundary['lat'], boundary['lng'], boundary['radius']);
+    
+    if (!isInside) {
+      final dist = _locService.getDistance(boundary['lat'], boundary['lng'], lat, lng);
       await _fsService.sendAlert('boundary', widget.uid, user['connectedTo'],
           'Child is outside the safe zone! Distance: ${dist.toStringAsFixed(0)}m');
+      _lastAlertTime = DateTime.now();
     }
   }
 
@@ -106,6 +121,103 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _linkWhatsApp() {
+    final phoneCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Link your WhatsApp'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your WhatsApp number with country code (e.g. +923001234567).\nThis will be used as your identity in emergency alerts.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: phoneCtrl,
+              decoration: const InputDecoration(
+                labelText: 'WhatsApp Number',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.phone),
+                hintText: '+923001234567',
+              ),
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final phone = phoneCtrl.text.trim();
+              if (phone.isNotEmpty && phone.startsWith('+')) {
+                await _fsService.linkWhatsApp(widget.uid, phone);
+                Navigator.pop(ctx);
+                _loadProfile();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ WhatsApp Linked Successfully!'),
+                      backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a valid number starting with +')),
+                );
+              }
+            },
+            child: const Text('Link Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _linkCoParent() {
+    final codeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Link with Mom/Dad'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter your spouse\'s connection code to share children access.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeCtrl,
+              decoration: const InputDecoration(labelText: 'Connection Code', border: OutlineInputBorder(), prefixIcon: Icon(Icons.pin)),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              if (codeCtrl.text.isNotEmpty) {
+                final ok = await _fsService.linkCoParent(codeCtrl.text, widget.uid);
+                Navigator.pop(ctx);
+                if (ok) {
+                  _loadProfile();
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Network Linked with Co-Parent!')));
+                } else {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Invalid Code or Already Linked')));
+                }
+              }
+            },
+            child: const Text('Link Network'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _navigate(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
 
   @override
@@ -118,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.logout), tooltip: 'Logout')],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -142,9 +254,41 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 2),
                       Text(isParent ? 'Monitoring active' : 'Tracking active',
                           style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                      if (!isParent) ...[
+                       if (!isParent) ...[
                         const SizedBox(height: 4),
                         Text(_trackingStatus, style: TextStyle(color: _trackingStatus.contains('Active') ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
+                          builder: (context, snapshot) {
+                            final data = snapshot.data?.data() as Map<String, dynamic>?;
+                            final linked = data?['linkedWhatsApp'] != null;
+                            return ActionChip(
+                              avatar: Icon(linked ? Icons.check_circle : Icons.link, size: 16, color: linked ? Colors.green : Colors.orange),
+                              label: Text(linked ? 'WhatsApp Linked' : 'Link WhatsApp', style: const TextStyle(fontSize: 10)),
+                              onPressed: linked ? null : _linkWhatsApp,
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                            );
+                          }
+                        ),
+                      ],
+                      if (isParent) ...[
+                        const SizedBox(height: 4),
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
+                          builder: (context, snapshot) {
+                            final data = snapshot.data?.data() as Map<String, dynamic>?;
+                            final hasCo = data?['coParent'] != null;
+                            return ActionChip(
+                              avatar: Icon(hasCo ? Icons.people : Icons.person_add, size: 16, color: hasCo ? Colors.indigo : Colors.grey),
+                              label: Text(hasCo ? 'Network Shared' : 'Link Mom/Dad', style: const TextStyle(fontSize: 10)),
+                              onPressed: hasCo ? null : _linkCoParent,
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                            );
+                          }
+                        ),
                       ],
                     ]),
                   ],
@@ -160,6 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (isParent)
               _menuBtn(Icons.shield, 'Safe Zone', 'Manage safety boundaries', Colors.indigo,
                   () => _navigate(SafeZoneScreen(uid: widget.uid))),
+            _menuBtn(Icons.contact_phone, 'Emergency Contacts', isParent ? 'Manage contacts' : 'View contacts', Colors.teal,
+                () => _navigate(ContactsScreen(uid: widget.uid, role: widget.role))),
             if (!isParent)
               _menuBtn(Icons.warning_rounded, 'Panic Button', 'Send emergency alert', Colors.red,
                   () => _navigate(PanicScreen(uid: widget.uid))),

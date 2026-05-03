@@ -38,7 +38,15 @@ class _MapScreenState extends State<MapScreen> {
       targetUids = user?['children'] ?? [];
     } else {
       // Child tracking parent: parent is the 'connectedTo' ID
-      if (user?['connectedTo'] != null) targetUids = [user!['connectedTo']];
+      final parentUid = user?['connectedTo'];
+      if (parentUid != null) {
+        targetUids.add(parentUid);
+        // Check if this parent has a co-parent linked
+        final parentData = await _fs.getUser(parentUid);
+        if (parentData != null && parentData['coParent'] != null) {
+          targetUids.add(parentData['coParent']);
+        }
+      }
     }
 
     if (targetUids.isEmpty) {
@@ -48,8 +56,8 @@ class _MapScreenState extends State<MapScreen> {
 
     // Fetch all profiles to get names
     final profiles = await _fs.getChildrenProfiles(targetUids);
-    // Boundary check for child: only child cares about radius on map
-    final bnd = widget.role == 'parent' ? null : await _fs.getBoundary(user?['connectedTo']);
+    // Boundary check: everyone can see the boundary on map if it exists
+    final bnd = await _fs.getBoundary(widget.role == 'parent' ? widget.uid : user?['connectedTo']);
     
     if (mounted) setState(() { _childrenProfiles = profiles; _boundary = bnd; _loading = false; });
   }
