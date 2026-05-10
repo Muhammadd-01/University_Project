@@ -145,6 +145,22 @@ class FirestoreService {
     return [];
   }
 
+  Future<void> updateEmergencyContact(String parentUid, Map<String, dynamic> oldContact, Map<String, dynamic> newContact) async {
+    final docRef = _db.collection('users').doc(parentUid);
+    await _db.runTransaction((transaction) async {
+      final doc = await transaction.get(docRef);
+      if (!doc.exists) return;
+      
+      final contacts = List<Map<String, dynamic>>.from(doc.get('emergencyContacts') ?? []);
+      final index = contacts.indexWhere((c) => c['phone'] == oldContact['phone']);
+      
+      if (index != -1) {
+        contacts[index] = newContact;
+        transaction.update(docRef, {'emergencyContacts': contacts});
+      }
+    });
+  }
+
   // Child's own WhatsApp linking
   Future<void> linkWhatsApp(String uid, String phone) async {
     await _db.collection('users').doc(uid).update({

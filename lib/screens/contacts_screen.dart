@@ -63,38 +63,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _syncContacts() async {
     if (await Permission.contacts.request().isGranted) {
       setState(() => _loading = true);
-      // Get all contacts with specific properties
       final contacts = await fc.FlutterContacts.getAll(
         properties: {fc.ContactProperty.name, fc.ContactProperty.phone},
       );
-      
-      int added = 0;
-      for (var contact in contacts) {
-        if (contact.phones.isNotEmpty) {
-          final String name = (contact.displayName != null && contact.displayName!.isNotEmpty) 
-              ? contact.displayName! 
-              : 'No Name';
-          final phone = contact.phones.first.number.replaceAll(RegExp(r'\s+'), '');
-          
-          // Check if already in our emergency contacts
-          bool exists = _contacts.any((c) => c['phone'] == phone);
-          if (!exists) {
-            // Optional: check if on WhatsApp
-            final onWhatsApp = await _isNumberOnWhatsApp(phone);
-            if (onWhatsApp) {
-              await _fs.addEmergencyContact(_parentUid!, name, phone, '');
-              added++;
-            }
-          }
-        }
-      }
-      
+      setState(() => _loading = false);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Synced $added WhatsApp contacts!')),
-        );
+        _showContactSelectionDialog(contacts);
       }
-      _loadContacts();
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,6 +78,95 @@ class _ContactsScreenState extends State<ContactsScreen> {
         );
       }
     }
+  }
+
+  void _showContactSelectionDialog(List<fc.Contact> allContacts) {
+    // Filter contacts that have phone numbers
+    final validContacts = allContacts.where((c) => c.phones.isNotEmpty).toList();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.8,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.all(12),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    const Text("Select Emergency Contacts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: validContacts.length,
+                  itemBuilder: (context, index) {
+                    final contact = validContacts[index];
+                    final String? name = contact.displayName;
+                    final String phone = contact.phones.first.number;
+                    final isAlreadyAdded = _contacts.any((c) => c['phone'] == phone.replaceAll(RegExp(r'\s+'), ''));
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue.withOpacity(0.1),
+                        child: Text((name != null && name.isNotEmpty) ? name[0].toUpperCase() : "?"),
+                      ),
+                      title: Text(name ?? 'No Name'),
+                      subtitle: Text(phone),
+                      trailing: isAlreadyAdded 
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : const Icon(Icons.add_circle_outline, color: Colors.blue),
+                      onTap: isAlreadyAdded ? null : () async {
+                        Navigator.pop(context); // Close picker
+                        setState(() => _loading = true);
+                        final cleanPhone = phone.replaceAll(RegExp(r'\s+'), '');
+                        
+                        // Check WhatsApp status before adding
+                        final onWhatsApp = await _isNumberOnWhatsApp(cleanPhone);
+                        
+                        if (mounted) {
+                          if (onWhatsApp) {
+                            // Add with WhatsApp alert enabled by default
+                            await _fs.addEmergencyContact(_parentUid!, name ?? 'No Name', cleanPhone, '');
+                            _loadContacts();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${name ?? "Contact"} added to emergency contacts')),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${name ?? "Contact"} is not active on WhatsApp')),
+                            );
+                          }
+                          setState(() => _loading = false);
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _addContact() {
@@ -183,6 +248,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 final name = nameCtrl.text.trim();
                 if (name.isNotEmpty && fullPhone.isNotEmpty) {
                   await _fs.addEmergencyContact(_parentUid!, name, fullPhone, countryCode);
+                  // Ensure newly added contacts have the flag in local state too if needed, 
+                  // but _loadContacts() will refresh everything.
                   Navigator.pop(ctx);
                   _loadContacts();
                 } else if (mounted) {
@@ -314,6 +381,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           icon: const Icon(Icons.chat_bubble_outline, color: Colors.green),
                           tooltip: 'WhatsApp',
                         ),
+                        // WhatsApp Alert Toggle
+                        if (isParent)
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text("Alert", style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.green)),
+                              Switch(
+                                value: contact['whatsappAlert'] ?? true,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                onChanged: (val) async {
+                                  final newContact = Map<String, dynamic>.from(contact);
+                                  newContact['whatsappAlert'] = val;
+                                  await _fs.updateEmergencyContact(_parentUid!, contact, newContact);
+                                  _loadContacts();
+                                },
+                                activeColor: Colors.green,
+                              ),
+                            ],
+                          ),
+                        const SizedBox(width: 8),
                         if (isParent)
                           IconButton(
                             onPressed: () => _deleteContact(contact),
