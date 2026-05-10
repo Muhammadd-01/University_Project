@@ -36,13 +36,24 @@ void callbackDispatcher() {
         await fsService.updateLocation(uid, pos.latitude, pos.longitude);
         
         // 4. Check Boundary
-        final boundary = await fsService.getBoundary(parentId);
-        if (boundary != null) {
-          final isInside = locService.isWithinBoundary(pos.latitude, pos.longitude, boundary['lat'], boundary['lng'], boundary['radius']);
-          if (!isInside) {
-            final dist = locService.getDistance(boundary['lat'], boundary['lng'], pos.latitude, pos.longitude);
-            await fsService.sendAlert('boundary', uid, parentId, 
-              '⚠️ Child is outside safe zone! Distance: ${dist.toStringAsFixed(0)}m');
+        final zones = await fsService.getSafeZones(parentId ?? '');
+        if (zones.isNotEmpty) {
+          bool isInsideAny = false;
+          double minDistance = double.infinity;
+          
+          for (final zone in zones) {
+            final isInside = locService.isWithinBoundary(pos.latitude, pos.longitude, zone['lat'], zone['lng'], zone['radius']);
+            if (isInside) {
+              isInsideAny = true;
+              break;
+            }
+            final dist = locService.getDistance(zone['lat'], zone['lng'], pos.latitude, pos.longitude);
+            if (dist < minDistance) minDistance = dist;
+          }
+
+          if (!isInsideAny) {
+            await fsService.sendAlert('boundary', uid, parentId!, 
+              '⚠️ Child is outside all safe zones! Closest zone: ${minDistance.toStringAsFixed(0)}m');
             
             // Show Local Notification to Child
             const aDetails = AndroidNotificationDetails(

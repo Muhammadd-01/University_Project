@@ -18,7 +18,7 @@ class _MapScreenState extends State<MapScreen> {
   final _ls = LocationService();
   final _mapCtrl = MapController();
   List<Map<String, dynamic>> _childrenProfiles = [];
-  Map<String, dynamic>? _boundary;
+  List<Map<String, dynamic>> _safeZones = [];
   bool _loading = true;
 
   // Colors for different children
@@ -57,9 +57,9 @@ class _MapScreenState extends State<MapScreen> {
     // Fetch all profiles to get names
     final profiles = await _fs.getChildrenProfiles(targetUids);
     // Boundary check: everyone can see the boundary on map if it exists
-    final bnd = await _fs.getBoundary(widget.role == 'parent' ? widget.uid : user?['connectedTo']);
+    final zones = await _fs.getSafeZones(widget.role == 'parent' ? widget.uid : user?['connectedTo']);
     
-    if (mounted) setState(() { _childrenProfiles = profiles; _boundary = bnd; _loading = false; });
+    if (mounted) setState(() { _childrenProfiles = profiles; _safeZones = zones; _loading = false; });
   }
 
   void _focusChild(String name, LatLng pos) async {
@@ -182,12 +182,25 @@ class _MapScreenState extends State<MapScreen> {
 
                 return Stack(
                   children: [
-                    FlutterMap(mapController: _mapCtrl, options: MapOptions(initialCenter: firstLoc ?? const LatLng(0, 0), initialZoom: 15), children: [
-                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.childguard.childguard'),
-                      if (_boundary != null) CircleLayer(circles: [CircleMarker(
-                        point: LatLng(_boundary!['lat'], _boundary!['lng']), radius: _boundary!['radius'].toDouble(),
-                        useRadiusInMeter: true, color: Colors.blue.withValues(alpha: 0.15), borderColor: Colors.blue, borderStrokeWidth: 2,
-                      )]),
+                    FlutterMap(
+                      mapController: _mapCtrl, 
+                      options: MapOptions(
+                        initialCenter: firstLoc ?? const LatLng(0, 0), 
+                        initialZoom: 15,
+                        // Enable rotation for a more dynamic feel
+                        interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+                      ), 
+                      children: [
+                        TileLayer(
+                          // Using CartoDB Voyager for a cleaner, premium 3D-ish feel
+                          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                          userAgentPackageName: 'com.childguard.childguard',
+                        ),
+                        if (_safeZones.isNotEmpty) CircleLayer(circles: _safeZones.map((z) => CircleMarker(
+                          point: LatLng(z['lat'], z['lng']), radius: z['radius'].toDouble(),
+                          useRadiusInMeter: true, color: Colors.blue.withValues(alpha: 0.1), borderColor: Colors.blue, borderStrokeWidth: 1,
+                        )).toList()),
                       MarkerLayer(markers: markers),
                     ]),
                     

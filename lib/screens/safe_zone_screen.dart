@@ -14,7 +14,7 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _children = [];
   String? _selectedChildUid;
-  final _radiusController = TextEditingController(text: '500');
+  List<Map<String, dynamic>> _safeZones = [];
 
   @override
   void initState() {
@@ -24,14 +24,12 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
 
   void _loadInitialData() async {
     await _loadChildren();
-    await _loadCurrentBoundary();
+    await _loadSafeZones();
   }
 
-  Map<String, dynamic>? _currentBoundary;
-
-  Future<void> _loadCurrentBoundary() async {
-    final b = await _fs.getBoundary(widget.uid);
-    if (mounted) setState(() => _currentBoundary = b);
+  Future<void> _loadSafeZones() async {
+    final zones = await _fs.getSafeZones(widget.uid);
+    if (mounted) setState(() => _safeZones = zones);
   }
 
   Future<void> _loadChildren() async {
@@ -51,25 +49,60 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
     }
   }
 
-  void _save() async {
+  void _addZone() async {
     if (_selectedChildUid == null) return;
-    final r = double.tryParse(_radiusController.text);
-    if (r == null || r <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid radius!')));
-      return;
-    }
+    
+    final nameCtrl = TextEditingController();
+    final radiusCtrl = TextEditingController(text: '500');
 
-    final loc = await _fs.getChildLocation(_selectedChildUid!);
-    if (loc == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Child location not found! Need location to set center.')));
-      return;
-    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Safe Zone'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Zone Name (e.g. School)')),
+            const SizedBox(height: 12),
+            TextField(controller: radiusCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Radius (meters)', suffixText: 'm')),
+            const SizedBox(height: 12),
+            const Text('Note: This will use the child\'s current location as the center of the safe zone.', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final r = double.tryParse(radiusCtrl.text);
+              if (name.isNotEmpty && r != null && r > 0) {
+                Navigator.pop(ctx);
+                setState(() => _loading = true);
+                
+                final loc = await _fs.getChildLocation(_selectedChildUid!);
+                if (loc == null) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not find child location!')));
+                    setState(() => _loading = false);
+                  }
+                  return;
+                }
 
-    await _fs.setBoundary(widget.uid, loc['latitude'], loc['longitude'], r);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Safe zone updated successfully!')));
-      Navigator.pop(context);
-    }
+                await _fs.addSafeZone(widget.uid, name, loc['latitude'], loc['longitude'], r);
+                _loadSafeZones();
+                if (mounted) setState(() => _loading = false);
+              }
+            },
+            child: const Text('Add Zone'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteZone(Map<String, dynamic> zone) async {
+    await _fs.removeSafeZone(widget.uid, zone);
+    _loadSafeZones();
   }
 
   @override
@@ -99,8 +132,8 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Text('Select Child', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text('Choose which child to set a boundary for', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Text('Select Child', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Choose a child to manage zones for', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _selectedChildUid,
@@ -112,56 +145,61 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
                     onChanged: (v) => setState(() => _selectedChildUid = v),
                     decoration: InputDecoration(
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.white,
-                      prefixIcon: const Icon(Icons.child_care),
+                      filled: true, fillColor: Colors.white, prefixIcon: const Icon(Icons.child_care),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  if (_currentBoundary != null) ...[
-                    Card(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.blue, width: 0.5)),
-                      child: ListTile(
-                        leading: const Icon(Icons.info_outline, color: Colors.blue),
-                        title: const Text('Current Active Zone', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        subtitle: Text('Radius: ${_currentBoundary!['radius'].toStringAsFixed(0)}m\nCenter: ${_currentBoundary!['lat'].toStringAsFixed(4)}, ${_currentBoundary!['lng'].toStringAsFixed(4)}', 
-                          style: const TextStyle(fontSize: 12)),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Safe Zones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      TextButton.icon(onPressed: _addZone, icon: const Icon(Icons.add), label: const Text('Add Zone')),
+                    ],
+                  ),
+                  const Divider(),
+                  if (_safeZones.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.location_off, size: 48, color: Colors.grey[300]),
+                            const SizedBox(height: 12),
+                            Text('No safe zones created yet.', style: TextStyle(color: Colors.grey[400])),
+                          ],
+                        ),
                       ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _safeZones.length,
+                      itemBuilder: (context, i) {
+                        final zone = _safeZones[i];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 2,
+                          child: ListTile(
+                            leading: CircleAvatar(backgroundColor: Colors.blue.withValues(alpha: 0.1), child: const Icon(Icons.radar, color: Colors.blue)),
+                            title: Text(zone['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('Radius: ${zone['radius'].toStringAsFixed(0)}m'),
+                            trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteZone(zone)),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 24),
-                  ],
-                  const Text('Safe Radius (meters)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text('Alerts will trigger if the child leaves this area', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _radiusController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.radar),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      suffixText: 'm',
-                      hintText: 'e.g. 500',
-                    ),
-                  ),
                   const SizedBox(height: 40),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: FilledButton.icon(
-                      onPressed: _save,
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 4,
-                      ),
-                      icon: const Icon(Icons.save),
-                      label: const Text('Activate Safe Zone', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withValues(alpha: 0.2))),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline, color: Colors.orange),
+                        SizedBox(width: 12),
+                        Expanded(child: Text('Child will trigger an alert ONLY if they are outside ALL safe zones at once.', style: TextStyle(fontSize: 12, color: Colors.orange))),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text('Note: Center will be set to child\'s current location', 
-                      style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic)),
                   ),
                 ],
               ),

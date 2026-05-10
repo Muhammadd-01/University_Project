@@ -12,8 +12,9 @@ class ConnectScreen extends StatefulWidget {
 class _ConnectScreenState extends State<ConnectScreen> {
   final _codeC = TextEditingController();
   final _fs = FirestoreService();
-  String? _code, _connectedTo, _connectedEmail, _connectedName; // Added _connectedName
-  List<Map<String, dynamic>> _childrenProfiles = []; // Added children list
+  String? _code, _connectedTo, _connectedEmail, _connectedName;
+  String? _coParentUid, _coParentName;
+  List<Map<String, dynamic>> _childrenProfiles = [];
   bool _loading = true;
 
   @override
@@ -24,26 +25,53 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (data != null) {
       String? connEmail;
       String? connName;
+      String? cpName;
       List<Map<String, dynamic>> profiles = [];
       
-      if (widget.role == 'parent' && data['children'] != null) {
-        // Parent view: fetch multiple children
-        profiles = await _fs.getChildrenProfiles(data['children'] as List<dynamic>);
+      if (widget.role == 'parent') {
+        if (data['children'] != null) {
+          profiles = await _fs.getChildrenProfiles(data['children'] as List<dynamic>);
+        }
+        if (data['coParent'] != null) {
+          final cp = await _fs.getUser(data['coParent']);
+          cpName = cp?['name'];
+        }
       } else if (data['connectedTo'] != null) {
-        // Child view: fetch single parent
         final otherUser = await _fs.getUser(data['connectedTo']);
         connEmail = otherUser?['email'];
         connName = otherUser?['name'];
       }
       
-      setState(() { 
-        _code = data['connectionCode']; 
-        _connectedTo = data['connectedTo']; 
-        _connectedEmail = connEmail;
-        _connectedName = connName;
-        _childrenProfiles = profiles;
-        _loading = false; 
-      });
+      if (mounted) {
+        setState(() { 
+          _code = data['connectionCode']; 
+          _connectedTo = data['connectedTo']; 
+          _connectedEmail = connEmail;
+          _connectedName = connName;
+          _coParentUid = data['coParent'];
+          _coParentName = cpName;
+          _childrenProfiles = profiles;
+          _loading = false; 
+        });
+      }
+    }
+  }
+
+  void _sendPartnerRequest() async {
+    final code = _codeC.text.trim();
+    if (code.isEmpty) return;
+    
+    setState(() => _loading = true);
+    // Get current user name for the request
+    final me = await _fs.getUser(widget.uid);
+    final ok = await _fs.sendPartnerRequest(code, widget.uid, me?['name'] ?? 'Partner');
+    
+    if (mounted) {
+      setState(() => _loading = false);
+      _codeC.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ok ? 'Request sent!' : 'Invalid code or already linked')),
+      );
     }
   }
 
@@ -73,6 +101,58 @@ class _ConnectScreenState extends State<ConnectScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            const SizedBox(height: 10),
+            // ===== PARENT VIEW: Partner Requests =====
+            if (widget.role == 'parent' && _coParentUid == null) ...[
+              StreamBuilder(
+                stream: _fs.getPartnerRequests(widget.uid),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox();
+                  final requests = snapshot.data!.docs;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Partner Requests:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                      const SizedBox(height: 8),
+                      ...requests.map((doc) {
+                        final req = doc.data() as Map<String, dynamic>;
+                        return Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.person, color: Colors.white)),
+                            title: Text(req['fromName']),
+                            subtitle: const Text('Wants to link as partner'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () async {
+                                  await _fs.acceptPartnerRequest(widget.uid, req['fromUid']);
+                                  _load();
+                                }),
+                                IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async {
+                                  await _fs.rejectPartnerRequest(widget.uid, req['fromUid']);
+                                }),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 20),
+                    ],
+                  );
+                },
+              ),
+            ],
+            // ===== PARENT VIEW: Linked Partner Info =====
+            if (widget.role == 'parent' && _coParentUid != null)
+              Card(
+                color: Colors.blue[50],
+                child: ListTile(
+                  leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.favorite, color: Colors.white)),
+                  title: Text(_coParentName ?? 'Partner Linked'),
+                  subtitle: const Text('Co-Parenting Active'),
+                  trailing: const Icon(Icons.verified, color: Colors.blue),
+                ),
+              ),
             const SizedBox(height: 20),
             // ===== PARENT VIEW: List all children =====
             if (widget.role == 'parent' && _childrenProfiles.isNotEmpty) ...[
@@ -87,8 +167,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: const CircleAvatar(child: Icon(Icons.child_care)),
-                      title: Text(_childrenProfiles[i]['name'] ?? 'Unknown Child'), // Show name
-                      subtitle: Text(_childrenProfiles[i]['email'] ?? ''), // Show email as secondary
+                      title: Text(_childrenProfiles[i]['name'] ?? 'Unknown Child'),
+                      subtitle: Text(_childrenProfiles[i]['email'] ?? ''),
                       trailing: const Icon(Icons.check_circle, color: Colors.green, size: 20),
                     ),
                   );
@@ -122,7 +202,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             if (widget.role == 'parent' && _code != null) ...[
               Icon(Icons.qr_code, size: 60, color: color.primary),
               const SizedBox(height: 16),
-              const Text('Your Connection Code', style: TextStyle(fontSize: 16)),
+              const Text('Shared Connection Code', style: TextStyle(fontSize: 16)),
               const SizedBox(height: 12),
               Center(
                 child: Card(
@@ -139,6 +219,19 @@ class _ConnectScreenState extends State<ConnectScreen> {
               ),
               const SizedBox(height: 12),
               Text('Share this code with your child', style: TextStyle(color: Colors.grey[600])),
+              if (_coParentUid == null) ...[
+                const SizedBox(height: 30),
+                const Divider(),
+                const SizedBox(height: 10),
+                const Text('Link with Spouse / Partner', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _codeC, keyboardType: TextInputType.number, textAlign: TextAlign.center,
+                  decoration: const InputDecoration(hintText: 'Enter Partner Code'),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _sendPartnerRequest, icon: const Icon(Icons.link), label: const Text('Send Link Request'))),
+              ]
             ],
             // Child view - enter code
             if (widget.role == 'child' && _connectedTo == null) ...[

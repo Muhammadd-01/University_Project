@@ -14,6 +14,8 @@ import 'safe_zone_screen.dart'; // Added for boundary management
 import 'contacts_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   final String role, uid;
@@ -30,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _trackingStatus = 'Initializing...'; // Track GPS status
   DateTime? _lastAlertTime; // Cooldown for alerts
   StreamSubscription? _alertSub;
+  static const _platform = MethodChannel('com.childguard.childguard/sms');
 
   @override
   void initState() {
@@ -143,15 +146,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = await _fsService.getUser(widget.uid);
     if (user == null || user['connectedTo'] == null) return;
     
-    final boundary = await _fsService.getBoundary(user['connectedTo']);
-    if (boundary == null) return;
+    final zones = await _fsService.getSafeZones(user['connectedTo']);
+    if (zones.isEmpty) return;
     
-    final isInside = _locService.isWithinBoundary(lat, lng, boundary['lat'], boundary['lng'], boundary['radius']);
+    // Child is SAFE if they are inside ANY zone
+    bool isInsideAny = false;
+    double minDistance = double.infinity;
     
-    if (!isInside) {
-      final dist = _locService.getDistance(boundary['lat'], boundary['lng'], lat, lng);
+    for (final zone in zones) {
+      final isInside = _locService.isWithinBoundary(lat, lng, zone['lat'], zone['lng'], zone['radius']);
+      if (isInside) {
+        isInsideAny = true;
+        break;
+      }
+      final dist = _locService.getDistance(zone['lat'], zone['lng'], lat, lng);
+      if (dist < minDistance) minDistance = dist;
+    }
+    
+    if (!isInsideAny) {
       await _fsService.sendAlert('boundary', widget.uid, user['connectedTo'],
-          'Child is outside the safe zone! Distance: ${dist.toStringAsFixed(0)}m');
+          'Child is outside all safe zones! Closest zone distance: ${minDistance.toStringAsFixed(0)}m');
       _lastAlertTime = DateTime.now();
     }
   }
@@ -184,7 +198,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _linkWhatsApp() {
+  void _linkWhatsApp() async {
+    // 1. Ask for permission first
+    final status = await Permission.phone.request();
+    if (!status.isGranted) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone permission required for auto-link')));
+      return;
+    }
+
+    setState(() => _trackingStatus = 'Detecting Number...');
+    
+    try {
+      // 2. Try to get number automatically from SIM
+      final String? detectedNumber = await _platform.invokeMethod('getDevicePhoneNumber');
+      
+      if (detectedNumber != null && detectedNumber.isNotEmpty) {
+        // Ensure it has a + (basic formatting)
+        String formatted = detectedNumber;
+        if (!formatted.startsWith('+')) formatted = '+$formatted';
+        
+        await _fsService.linkWhatsApp(widget.uid, formatted);
+        _loadProfile();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ Auto-Linked: $formatted'), backgroundColor: Colors.green),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('Auto-link error: $e');
+    }
+
+    // 3. Fallback to manual entry if auto-detect fails
     final phoneCtrl = TextEditingController();
     showDialog(
       context: context,
@@ -250,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Enter your spouse\'s connection code to share children access.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text('Enter your spouse\'s connection code to send a link request.', style: TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 16),
             TextField(
               controller: codeCtrl,
@@ -264,17 +310,16 @@ class _HomeScreenState extends State<HomeScreen> {
           FilledButton(
             onPressed: () async {
               if (codeCtrl.text.isNotEmpty) {
-                final ok = await _fsService.linkCoParent(codeCtrl.text, widget.uid);
+                final ok = await _fsService.sendPartnerRequest(codeCtrl.text, widget.uid, _userName ?? 'Partner');
                 Navigator.pop(ctx);
                 if (ok) {
-                  _loadProfile();
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Network Linked with Co-Parent!')));
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Request Sent! Waiting for partner to approve.')));
                 } else {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Invalid Code or Already Linked')));
                 }
               }
             },
-            child: const Text('Link Network'),
+            child: const Text('Send Request'),
           ),
         ],
       ),

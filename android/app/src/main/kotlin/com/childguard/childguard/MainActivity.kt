@@ -1,11 +1,13 @@
 package com.childguard.childguard
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.telephony.SmsManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -95,10 +97,22 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID", "Phone is null", null)
                     }
+                } else if (call.method == "getDevicePhoneNumber") {
+                    result.success(getDevicePhoneNumber())
                 } else {
                     result.notImplemented()
                 }
             }
+    }
+
+    @SuppressLint("HardwareIds", "MissingPermission")
+    private fun getDevicePhoneNumber(): String? {
+        return try {
+            val tMgr = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            tMgr.line1Number
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
