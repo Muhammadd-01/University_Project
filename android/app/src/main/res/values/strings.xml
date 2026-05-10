@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Enables panic mode detection via volume buttons. ChildGuard uses this to send emergency alerts when you long-press both volume buttons.</string>
+</resources>

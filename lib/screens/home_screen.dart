@@ -13,6 +13,7 @@ import 'alerts_screen.dart';
 import 'safe_zone_screen.dart'; // Added for boundary management
 import 'contacts_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:workmanager/workmanager.dart';
 
 class HomeScreen extends StatefulWidget {
   final String role, uid;
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
    String? _userName;
   String _trackingStatus = 'Initializing...'; // Track GPS status
   DateTime? _lastAlertTime; // Cooldown for alerts
+  StreamSubscription? _alertSub;
 
   @override
   void initState() {
@@ -46,6 +48,21 @@ class _HomeScreenState extends State<HomeScreen> {
       await prefs.setString('uid', widget.uid);
       if (data['connectedTo'] != null) {
         await prefs.setString('parentId', data['connectedTo']);
+      }
+
+      // If parent, listen for alerts in real-time
+      if (widget.role == 'parent') {
+        _startAlertListener();
+      }
+
+      // Start background task if child
+      if (widget.role == 'child') {
+        Workmanager().registerPeriodicTask(
+          "1", 
+          "geofenceCheck",
+          frequency: const Duration(minutes: 15), // Android minimum
+          constraints: Constraints(networkType: NetworkType.connected),
+        );
       }
     }
   }
@@ -71,6 +88,48 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _trackingStatus = 'GPS Error! ⚠️');
     }
   }
+
+  void _startAlertListener() {
+    _alertSub = _fsService.getAlerts(widget.uid).listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        final lastAlert = snapshot.docs.first.data() as Map<String, dynamic>;
+        final timestamp = lastAlert['timestamp'] as Timestamp?;
+        
+        // Only notify if alert is newer than 1 minute (prevents old alert spam on login)
+        if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
+          _showEmergencyDialog(lastAlert['message'], lastAlert['type']);
+        }
+      }
+    });
+  }
+
+  void _showEmergencyDialog(String message, String type) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: type == 'panic' ? Colors.red[50] : Colors.orange[50],
+        title: Row(
+          children: [
+            Icon(type == 'panic' ? Icons.warning : Icons.radar, color: type == 'panic' ? Colors.red : Colors.orange),
+            const SizedBox(width: 8),
+            Text(type == 'panic' ? '🚨 PANIC ALERT' : '⚠️ BOUNDARY ALERT'),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: FilledButton.styleFrom(backgroundColor: type == 'panic' ? Colors.red : Colors.orange),
+            child: const Text('I am coming!'),
+          ),
+        ],
+      ),
+    );
+  }
+
 
    // Boundary check - child safe zone mein hai ya bahar
   Future<void> _checkBoundary(double lat, double lng) async {
@@ -98,7 +157,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
-  void dispose() { _locationTimer?.cancel(); super.dispose(); }
+  void dispose() { 
+    _locationTimer?.cancel(); 
+    _alertSub?.cancel();
+    super.dispose(); 
+  }
 
   void _logout() {
     showDialog(

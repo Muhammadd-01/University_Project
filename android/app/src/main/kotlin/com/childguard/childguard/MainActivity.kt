@@ -11,6 +11,10 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import android.provider.Settings
+import android.text.TextUtils
+import android.provider.ContactsContract
+import android.net.Uri
 
 class MainActivity : FlutterActivity() {
 
@@ -32,7 +36,8 @@ class MainActivity : FlutterActivity() {
         // Listen for power button events from service
         val panicReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                eventSink?.success("TRIPLE_PRESS")
+                val trigger = intent?.getStringExtra("trigger") ?: "TRIPLE_PRESS"
+                eventSink?.success(trigger)
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -77,9 +82,66 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID", "Phone or message is null", null)
                     }
+                } else if (call.method == "isAccessibilityServiceEnabled") {
+                    result.success(isAccessibilityServiceEnabled())
+                } else if (call.method == "openAccessibilitySettings") {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                    result.success(true)
+                } else if (call.method == "isNumberOnWhatsApp") {
+                    val phone = call.argument<String>("phone")
+                    if (phone != null) {
+                        result.success(isNumberOnWhatsApp(phone))
+                    } else {
+                        result.error("INVALID", "Phone is null", null)
+                    }
                 } else {
                     result.notImplemented()
                 }
             }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val service = "$packageName/${PanicAccessibilityService::class.java.canonicalName}"
+        val enabled = Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        if (enabled == 1) {
+            val settingValue = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            if (settingValue != null) {
+                val splitter = TextUtils.SimpleStringSplitter(':')
+                splitter.setString(settingValue)
+                while (splitter.hasNext()) {
+                    val accessibilityService = splitter.next()
+                    if (accessibilityService.equals(service, ignoreCase = true)) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    private fun isNumberOnWhatsApp(phoneNumber: String): Boolean {
+        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
+        val projection = arrayOf(ContactsContract.PhoneLookup._ID, ContactsContract.PhoneLookup.NUMBER)
+        val cursor = contentResolver.query(uri, projection, null, null, null)
+        
+        var isOnWhatsApp = false
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val contactId = it.getString(it.getColumnIndexOrThrow(ContactsContract.PhoneLookup._ID))
+                val dataUri = ContactsContract.Data.CONTENT_URI
+                val dataProjection = arrayOf(ContactsContract.Data.MIMETYPE)
+                val dataSelection = "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?"
+                val dataSelectionArgs = arrayOf(contactId, "vnd.android.cursor.item/vnd.com.whatsapp.profile")
+                
+                val dataCursor = contentResolver.query(dataUri, dataProjection, dataSelection, dataSelectionArgs, null)
+                dataCursor?.use { dc ->
+                    if (dc.count > 0) {
+                        isOnWhatsApp = true
+                    }
+                }
+            }
+        }
+        return isOnWhatsApp
     }
 }

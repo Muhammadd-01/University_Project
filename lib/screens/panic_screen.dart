@@ -16,6 +16,7 @@ class _PanicScreenState extends State<PanicScreen> {
   final _fs = FirestoreService();
   final _ls = LocationService();
   bool _sending = false, _sent = false;
+  bool _accessibilityEnabled = false;
   int _sentCount = 0;
   int _totalContacts = 0;
   String _statusText = 'Tap for Emergency!';
@@ -29,9 +30,27 @@ class _PanicScreenState extends State<PanicScreen> {
   void initState() {
     super.initState();
     _requestSmsPermission();
+    _checkAccessibility();
     _powerChannel.receiveBroadcastStream().listen((e) {
-      if (e == 'TRIPLE_PRESS') _sendPanic();
+      if (e == 'TRIPLE_PRESS' || e == 'VOLUME_BUTTONS') {
+        _sendPanic(trigger: e.toString());
+      }
     }, onError: (_) {});
+  }
+
+  Future<void> _checkAccessibility() async {
+    try {
+      final bool enabled = await _smsChannel.invokeMethod('isAccessibilityServiceEnabled');
+      if (mounted) setState(() => _accessibilityEnabled = enabled);
+    } catch (e) {
+      debugPrint('Accessibility check error: $e');
+    }
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    await _smsChannel.invokeMethod('openAccessibilitySettings');
+    // Re-check when user returns
+    Future.delayed(const Duration(seconds: 2), _checkAccessibility);
   }
 
   Future<void> _requestSmsPermission() async {
@@ -90,7 +109,7 @@ class _PanicScreenState extends State<PanicScreen> {
     }
   }
 
-  void _sendPanic() async {
+  void _sendPanic({String trigger = 'MANUAL'}) async {
     if (_sending) return;
     setState(() {
       _sending = true;
@@ -107,11 +126,19 @@ class _PanicScreenState extends State<PanicScreen> {
 
         // 1. Send Firebase Alert
         if (mounted) setState(() => _statusText = 'Sending Firebase alert...');
-        await _fs.sendAlert('panic', widget.uid, user['connectedTo'],
-            '🚨 EMERGENCY! Panic button pressed!');
+        String alertMsg = '🚨 EMERGENCY! ';
+        if (trigger == 'VOLUME_BUTTONS') {
+          alertMsg += 'Panic triggered by Volume Buttons!';
+        } else if (trigger == 'TRIPLE_PRESS') {
+          alertMsg += 'Panic triggered by Power Button!';
+        } else {
+          alertMsg += 'Panic button pressed manually!';
+        }
 
-        // 2. Auto-send SMS to all emergency contacts
-        if (mounted) setState(() => _statusText = 'Sending SMS alerts...');
+        await _fs.sendAlert('panic', widget.uid, user['connectedTo'], alertMsg);
+
+        // 2. Auto-send SMS/WhatsApp alerts to all emergency contacts
+        if (mounted) setState(() => _statusText = 'Sending alerts to contacts...');
         final contacts = await _fs.getEmergencyContacts(user['connectedTo']);
         if (contacts.isNotEmpty) {
           await _sendSmsToContacts(contacts, lat, lng);
@@ -207,6 +234,45 @@ class _PanicScreenState extends State<PanicScreen> {
                 ),
               ],
               const SizedBox(height: 40),
+              if (!_accessibilityEnabled)
+                Card(
+                  color: Colors.orange[50],
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        const Row(children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                          SizedBox(width: 12),
+                          Expanded(child: Text(
+                              'Volume Button Panic is NOT active. Please enable Accessibility Service.',
+                              style: TextStyle(fontSize: 13, color: Colors.orange, fontWeight: FontWeight.bold))),
+                        ]),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: _openAccessibilitySettings,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                          child: const Text('Enable in Settings', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Card(
+                color: Colors.blue[50],
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Row(children: [
+                    Icon(Icons.volume_up, color: Colors.blue),
+                    SizedBox(width: 12),
+                    Expanded(child: Text(
+                        'NEW: Long-press BOTH Volume Up & Down for 2 seconds to trigger panic anytime!',
+                        style: TextStyle(fontSize: 13, color: Colors.blue, fontWeight: FontWeight.bold))),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 8),
               Card(
                 color: Colors.green[50],
                 child: const Padding(
@@ -215,7 +281,7 @@ class _PanicScreenState extends State<PanicScreen> {
                     Icon(Icons.sms, color: Colors.green),
                     SizedBox(width: 12),
                     Expanded(child: Text(
-                        'SMS alerts are sent automatically — no need to open any app!',
+                        'Emergency alerts are sent automatically via SMS to your contacts.',
                         style: TextStyle(fontSize: 13, color: Colors.green))),
                   ]),
                 ),
@@ -226,10 +292,10 @@ class _PanicScreenState extends State<PanicScreen> {
                 child: const Padding(
                   padding: EdgeInsets.all(16),
                   child: Row(children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.amber),
+                    Icon(Icons.power_settings_new, color: Colors.grey),
                     SizedBox(width: 12),
                     Expanded(child: Text(
-                        'Triple-press the power button to trigger alert even when app is in background',
+                        'Power Button triple-press also works as a backup trigger.',
                         style: TextStyle(fontSize: 13, color: Colors.grey))),
                   ]),
                 ),

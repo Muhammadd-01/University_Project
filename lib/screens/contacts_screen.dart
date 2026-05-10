@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:flutter_contacts/flutter_contacts.dart' as fc;
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/firestore_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String uid, role;
-  const ContactsScreen({super.key, required this.uid, required this.role});
+  const ContactsScreen({Key? key, required this.uid, required this.role}) : super(key: key);
 
   @override
   State<ContactsScreen> createState() => _ContactsScreenState();
@@ -15,6 +19,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _contacts = [];
   String? _parentUid;
+  static const _platform = MethodChannel('com.childguard.childguard/sms');
 
   @override
   void initState() {
@@ -45,59 +50,151 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  Future<bool> _isNumberOnWhatsApp(String phone) async {
+    try {
+      final bool onWhatsApp = await _platform.invokeMethod('isNumberOnWhatsApp', {'phone': phone});
+      return onWhatsApp;
+    } catch (e) {
+      debugPrint('WhatsApp check error: $e');
+      return false;
+    }
+  }
+
+  Future<void> _syncContacts() async {
+    if (await Permission.contacts.request().isGranted) {
+      setState(() => _loading = true);
+      // Get all contacts with specific properties
+      final contacts = await fc.FlutterContacts.getAll(
+        properties: {fc.ContactProperty.name, fc.ContactProperty.phone},
+      );
+      
+      int added = 0;
+      for (var contact in contacts) {
+        if (contact.phones.isNotEmpty) {
+          final String name = (contact.displayName != null && contact.displayName!.isNotEmpty) 
+              ? contact.displayName! 
+              : 'No Name';
+          final phone = contact.phones.first.number.replaceAll(RegExp(r'\s+'), '');
+          
+          // Check if already in our emergency contacts
+          bool exists = _contacts.any((c) => c['phone'] == phone);
+          if (!exists) {
+            // Optional: check if on WhatsApp
+            final onWhatsApp = await _isNumberOnWhatsApp(phone);
+            if (onWhatsApp) {
+              await _fs.addEmergencyContact(_parentUid!, name, phone, '');
+              added++;
+            }
+          }
+        }
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Synced $added WhatsApp contacts!')),
+        );
+      }
+      _loadContacts();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contacts permission denied')),
+        );
+      }
+    }
+  }
+
   void _addContact() {
     final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
+    String fullPhone = '';
+    String countryCode = 'PK';
+    bool isOnWhatsApp = false;
+    bool checkingWhatsApp = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Emergency Contact'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl, 
-                decoration: InputDecoration(
-                  labelText: 'Name', 
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Add Emergency Contact'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl, 
+                  decoration: InputDecoration(
+                    labelText: 'Name', 
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: phoneCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Phone Number',
-                  hintText: '+923001234567',
-                  prefixIcon: const Icon(Icons.phone),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 16),
+                IntlPhoneField(
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  initialCountryCode: countryCode,
+                  onChanged: (phone) async {
+                    fullPhone = phone.completeNumber;
+                    countryCode = phone.countryISOCode;
+                    
+                    // Auto check WhatsApp
+                    if (fullPhone.length > 8) {
+                      setState(() => checkingWhatsApp = true);
+                      final onWA = await _isNumberOnWhatsApp(fullPhone);
+                      setState(() {
+                        isOnWhatsApp = onWA;
+                        checkingWhatsApp = false;
+                      });
+                    }
+                  },
                 ),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
+                if (checkingWhatsApp)
+                  const LinearProgressIndicator()
+                else if (fullPhone.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isOnWhatsApp ? Icons.check_circle : Icons.error_outline,
+                          color: isOnWhatsApp ? Colors.green : Colors.orange,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isOnWhatsApp ? 'Available on WhatsApp' : 'Not detected on WhatsApp',
+                          style: TextStyle(
+                            color: isOnWhatsApp ? Colors.green : Colors.orange,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isNotEmpty && fullPhone.isNotEmpty) {
+                  await _fs.addEmergencyContact(_parentUid!, name, fullPhone, countryCode);
+                  Navigator.pop(ctx);
+                  _loadContacts();
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter name and valid phone number')),
+                  );
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              final phone = phoneCtrl.text.trim();
-              if (name.isNotEmpty && phone.isNotEmpty && phone.startsWith('+')) {
-                await _fs.addEmergencyContact(_parentUid!, name, phone, '');
-                Navigator.pop(ctx);
-                _loadContacts();
-              } else if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Enter name and phone number with country code (e.g. +92...)')),
-                );
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
   }
@@ -138,10 +235,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
           IconButton(onPressed: _loadContacts, icon: const Icon(Icons.refresh)),
         ],
       ),
-      floatingActionButton: isParent ? FloatingActionButton.extended(
-        onPressed: _addContact,
-        label: const Text('Add Contact'),
-        icon: const Icon(Icons.add),
+      floatingActionButton: isParent ? Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'sync',
+            onPressed: _syncContacts,
+            label: const Text('Sync WhatsApp'),
+            icon: const Icon(Icons.sync),
+            backgroundColor: Colors.green,
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'add',
+            onPressed: _addContact,
+            label: const Text('Add Contact'),
+            icon: const Icon(Icons.add),
+          ),
+        ],
       ) : null,
       body: _loading 
         ? const Center(child: CircularProgressIndicator())
