@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private val EVENT_CHANNEL = "com.childguard.childguard/power_button"
     private val METHOD_CHANNEL = "com.childguard.childguard/sms"
     private var eventSink: EventChannel.EventSink? = null
+    private var initialAlert: Map<String, String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -90,29 +91,40 @@ class MainActivity : FlutterActivity() {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     startActivity(intent)
                     result.success(true)
-                } else if (call.method == "isNumberOnWhatsApp") {
-                    val phone = call.argument<String>("phone")
-                    if (phone != null) {
-                        result.success(isNumberOnWhatsApp(phone))
-                    } else {
-                        result.error("INVALID", "Phone is null", null)
-                    }
-                } else if (call.method == "getDevicePhoneNumber") {
-                    result.success(getDevicePhoneNumber())
+                } else if (call.method == "bringToForeground") {
+                    bringToForeground()
+                    result.success(true)
+                } else if (call.method == "getInitialAlert") {
+                    result.success(initialAlert)
+                    initialAlert = null // Clear after use
                 } else {
                     result.notImplemented()
                 }
             }
+        
+        handleIntent(intent)
     }
 
-    @SuppressLint("HardwareIds", "MissingPermission")
-    private fun getDevicePhoneNumber(): String? {
-        return try {
-            val tMgr = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-            tMgr.line1Number
-        } catch (e: Exception) {
-            null
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getStringExtra("trigger") == "DANGER") {
+            val type = intent.getStringExtra("alertType") ?: "panic"
+            val message = intent.getStringExtra("alertMessage") ?: "Emergency detected!"
+            initialAlert = mapOf("type" to type, "message" to message)
+            
+            // Trigger Flutter event if listener is active
+            eventSink?.success("DANGER|$type|$message")
         }
+    }
+
+    private fun bringToForeground() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        startActivity(intent)
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
@@ -132,30 +144,5 @@ class MainActivity : FlutterActivity() {
             }
         }
         return false
-    }
-
-    private fun isNumberOnWhatsApp(phoneNumber: String): Boolean {
-        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
-        val projection = arrayOf(ContactsContract.PhoneLookup._ID, ContactsContract.PhoneLookup.NUMBER)
-        val cursor = contentResolver.query(uri, projection, null, null, null)
-        
-        var isOnWhatsApp = false
-        cursor?.use {
-            if (it.moveToFirst()) {
-                val contactId = it.getString(it.getColumnIndexOrThrow(ContactsContract.PhoneLookup._ID))
-                val dataUri = ContactsContract.Data.CONTENT_URI
-                val dataProjection = arrayOf(ContactsContract.Data.MIMETYPE)
-                val dataSelection = "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?"
-                val dataSelectionArgs = arrayOf(contactId, "vnd.android.cursor.item/vnd.com.whatsapp.profile")
-                
-                val dataCursor = contentResolver.query(dataUri, dataProjection, dataSelection, dataSelectionArgs, null)
-                dataCursor?.use { dc ->
-                    if (dc.count > 0) {
-                        isOnWhatsApp = true
-                    }
-                }
-            }
-        }
-        return isOnWhatsApp
     }
 }

@@ -36,7 +36,7 @@ void callbackDispatcher() {
         await fsService.updateLocation(uid, pos.latitude, pos.longitude);
         
         // 4. Check Boundary
-        final zones = await fsService.getSafeZones(parentId ?? '');
+        final zones = await fsService.getSafeZones(parentId);
         if (zones.isNotEmpty) {
           bool isInsideAny = false;
           double minDistance = double.infinity;
@@ -52,7 +52,7 @@ void callbackDispatcher() {
           }
 
           if (!isInsideAny) {
-            await fsService.sendAlert('boundary', uid, parentId!, 
+            await fsService.sendAlert('boundary', uid, parentId, 
               '⚠️ Child is outside all safe zones! Closest zone: ${minDistance.toStringAsFixed(0)}m');
             
             // Show Local Notification to Child
@@ -80,7 +80,7 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   
   // Initialize Workmanager
-  Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+  Workmanager().initialize(callbackDispatcher);
   
   runApp(const ChildGuardApp());
 }

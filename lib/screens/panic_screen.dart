@@ -119,13 +119,8 @@ class _PanicScreenState extends State<PanicScreen> {
     try {
       final user = await _fs.getUser(widget.uid);
       if (user != null && user['connectedTo'] != null) {
-        if (mounted) setState(() => _statusText = 'Getting location...');
-        final pos = await _ls.getCurrentLocation();
-        final lat = pos?.latitude;
-        final lng = pos?.longitude;
-
-        // 1. Send Firebase Alert
-        if (mounted) setState(() => _statusText = 'Sending Firebase alert...');
+        // 1. Send Firebase Alert IMMEDIATELY for speed
+        if (mounted) setState(() => _statusText = 'Sending alert...');
         String alertMsg = '🚨 EMERGENCY! ';
         if (trigger == 'VOLUME_BUTTONS') {
           alertMsg += 'Panic triggered by Volume Buttons!';
@@ -134,13 +129,26 @@ class _PanicScreenState extends State<PanicScreen> {
         } else {
           alertMsg += 'Panic button pressed manually!';
         }
-
+        
         await _fs.sendAlert('panic', widget.uid, user['connectedTo'], alertMsg);
+        
+        // 2. Fetch location and emergency contacts in parallel
+        if (mounted) setState(() => _statusText = 'Updating location & contacts...');
+        
+        final results = await Future.wait([
+          _ls.getCurrentLocation(),
+          _fs.getEmergencyContacts(user['connectedTo'])
+        ]);
+        
+        final pos = results[0] as dynamic; // Position?
+        final contacts = results[1] as List<Map<String, dynamic>>;
+        
+        final lat = pos?.latitude;
+        final lng = pos?.longitude;
 
-        // 2. Auto-send SMS/WhatsApp alerts to all emergency contacts
-        if (mounted) setState(() => _statusText = 'Sending alerts to contacts...');
-        final contacts = await _fs.getEmergencyContacts(user['connectedTo']);
+        // 3. Auto-send SMS alerts
         if (contacts.isNotEmpty) {
+          if (mounted) setState(() => _statusText = 'Sending SMS to contacts...');
           await _sendSmsToContacts(contacts, lat, lng);
         }
 
@@ -194,7 +202,7 @@ class _PanicScreenState extends State<PanicScreen> {
                   width: 180, height: 180,
                   decoration: BoxDecoration(
                     color: btnColor, shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: btnColor.withValues(alpha: 0.4), blurRadius: 30, spreadRadius: 5)],
+                    boxShadow: [BoxShadow(color: btnColor.withOpacity(0.4), blurRadius: 30, spreadRadius: 5)],
                   ),
                   child: Center(child: _sending
                       ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 3)

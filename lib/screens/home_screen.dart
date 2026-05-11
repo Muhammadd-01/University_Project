@@ -16,6 +16,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'danger_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String role, uid;
@@ -33,12 +35,64 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _lastAlertTime; // Cooldown for alerts
   StreamSubscription? _alertSub;
   static const _platform = MethodChannel('com.childguard.childguard/sms');
+  static const _eventChannel = EventChannel('com.childguard.childguard/power_button');
+  final _notifications = FlutterLocalNotificationsPlugin();
+  StreamSubscription? _nativeSub;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _initNotifications();
     _startTracking(); // Everyone tracks for two-way safety
+    _listenToNativeEvents();
+    _checkInitialAlert();
+  }
+
+  void _listenToNativeEvents() {
+    _nativeSub = _eventChannel.receiveBroadcastStream().listen((event) {
+      if (event is String && event.startsWith('DANGER|')) {
+        final parts = event.split('|');
+        if (parts.length >= 3) {
+          final type = parts[1];
+          final message = parts[2];
+          _showEmergencyDialog(message, type);
+        }
+      }
+    });
+  }
+
+  void _checkInitialAlert() async {
+    try {
+      final Map? alert = await _platform.invokeMethod('getInitialAlert');
+      if (alert != null) {
+        final type = alert['type'] ?? 'panic';
+        final message = alert['message'] ?? 'Emergency detected!';
+        _showEmergencyDialog(message, type);
+      }
+    } catch (e) {
+      debugPrint('Error checking initial alert: $e');
+    }
+  }
+
+  void _initNotifications() async {
+    const AndroidInitializationSettings android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings settings = InitializationSettings(android: android);
+    await _notifications.initialize(settings: settings);
+    
+    // Request notification permission for Android 13+
+    if (widget.role == 'parent') {
+      await Permission.notification.request();
+      // Draw over apps permission (needed for auto-open on some devices)
+      await Permission.systemAlertWindow.request();
+    } else if (widget.role == 'child') {
+      await Permission.notification.request();
+      // Request Foreground then Background location for continuous tracking
+      var status = await Permission.location.request();
+      if (status.isGranted) {
+        await Permission.locationAlways.request();
+      }
+    }
   }
 
   void _loadProfile() async {
@@ -106,31 +160,50 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _showEmergencyDialog(String message, String type) {
-    if (!mounted) return;
+  bool _isShowingDanger = false;
+  DateTime? _lastDangerTime;
+
+  void _showEmergencyDialog(String message, String type) async {
+    if (!mounted || _isShowingDanger) return;
     
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: type == 'panic' ? Colors.red[50] : Colors.orange[50],
-        title: Row(
-          children: [
-            Icon(type == 'panic' ? Icons.warning : Icons.radar, color: type == 'panic' ? Colors.red : Colors.orange),
-            const SizedBox(width: 8),
-            Text(type == 'panic' ? '🚨 PANIC ALERT' : '⚠️ BOUNDARY ALERT'),
-          ],
-        ),
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: FilledButton.styleFrom(backgroundColor: type == 'panic' ? Colors.red : Colors.orange),
-            child: const Text('I am coming!'),
-          ),
-        ],
-      ),
+    // Prevent duplicate triggers within 10 seconds
+    if (_lastDangerTime != null && DateTime.now().difference(_lastDangerTime!).inSeconds < 10) return;
+    _lastDangerTime = DateTime.now();
+
+    _isShowingDanger = true;
+    
+    // 1. Trigger System Notification (High Importance)
+    // Using ID 100 to overwrite the native service notification instead of duplicating
+    final androidDetails = AndroidNotificationDetails(
+      'EmergencyAlertChannel', 
+      '🚨 EMERGENCY ALERTS',
+      importance: Importance.max,
+      priority: Priority.high,
+      fullScreenIntent: true,
+      ongoing: true,
+      styleInformation: BigTextStyleInformation(message),
+      color: type == 'panic' ? Colors.red : Colors.orange,
     );
+    
+    await _notifications.show(
+      id: 100, 
+      title: type == 'panic' ? '🚨 PANIC ALERT' : '⚠️ BOUNDARY ALERT',
+      body: message,
+      notificationDetails: NotificationDetails(android: androidDetails),
+    );
+
+    // 2. Bring App to Foreground if hidden
+    try {
+      await _platform.invokeMethod('bringToForeground');
+    } catch (e) {
+      debugPrint('Bring to foreground error: $e');
+    }
+
+    // 3. Show Danger Splash Screen and wait for it to close
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => DangerScreen(message: message, type: type)));
+    
+    // Reset flag after user closes the danger screen
+    _isShowingDanger = false;
   }
 
 
@@ -174,6 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() { 
     _locationTimer?.cancel(); 
     _alertSub?.cancel();
+    _nativeSub?.cancel();
     super.dispose(); 
   }
 
@@ -198,94 +272,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _linkWhatsApp() async {
-    // 1. Ask for permission first
-    final status = await Permission.phone.request();
-    if (!status.isGranted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone permission required for auto-link')));
-      return;
-    }
-
-    setState(() => _trackingStatus = 'Detecting Number...');
-    
-    try {
-      // 2. Try to get number automatically from SIM
-      final String? detectedNumber = await _platform.invokeMethod('getDevicePhoneNumber');
-      
-      if (detectedNumber != null && detectedNumber.isNotEmpty) {
-        // Ensure it has a + (basic formatting)
-        String formatted = detectedNumber;
-        if (!formatted.startsWith('+')) formatted = '+$formatted';
-        
-        await _fsService.linkWhatsApp(widget.uid, formatted);
-        _loadProfile();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✅ Auto-Linked: $formatted'), backgroundColor: Colors.green),
-          );
-        }
-        return;
-      }
-    } catch (e) {
-      debugPrint('Auto-link error: $e');
-    }
-
-    // 3. Fallback to manual entry if auto-detect fails
-    final phoneCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Link your WhatsApp'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Enter your WhatsApp number with country code (e.g. +923001234567).\nThis will be used as your identity in emergency alerts.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: phoneCtrl,
-              decoration: const InputDecoration(
-                labelText: 'WhatsApp Number',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
-                hintText: '+923001234567',
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              final phone = phoneCtrl.text.trim();
-              if (phone.isNotEmpty && phone.startsWith('+')) {
-                await _fsService.linkWhatsApp(widget.uid, phone);
-                Navigator.pop(ctx);
-                _loadProfile();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ WhatsApp Linked Successfully!'),
-                      backgroundColor: Colors.green,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              } else if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid number starting with +')),
-                );
-              }
-            },
-            child: const Text('Link Now'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _linkCoParent() {
     final codeCtrl = TextEditingController();
@@ -365,21 +351,6 @@ class _HomeScreenState extends State<HomeScreen> {
                        if (!isParent) ...[
                         const SizedBox(height: 4),
                         Text(_trackingStatus, style: TextStyle(color: _trackingStatus.contains('Active') ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
-                          builder: (context, snapshot) {
-                            final data = snapshot.data?.data() as Map<String, dynamic>?;
-                            final linked = data?['linkedWhatsApp'] != null;
-                            return ActionChip(
-                              avatar: Icon(linked ? Icons.check_circle : Icons.link, size: 16, color: linked ? Colors.green : Colors.orange),
-                              label: Text(linked ? 'WhatsApp Linked' : 'Link WhatsApp', style: const TextStyle(fontSize: 10)),
-                              onPressed: linked ? null : _linkWhatsApp,
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            );
-                          }
-                        ),
                       ],
                       if (isParent) ...[
                         const SizedBox(height: 4),
@@ -432,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Card(
         child: ListTile(
           onTap: onTap,
-          leading: CircleAvatar(backgroundColor: iconColor.withValues(alpha: 0.15), child: Icon(icon, color: iconColor)),
+          leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.15), child: Icon(icon, color: iconColor)),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(subtitle),
           trailing: const Icon(Icons.chevron_right),

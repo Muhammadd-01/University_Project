@@ -50,15 +50,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Future<bool> _isNumberOnWhatsApp(String phone) async {
-    try {
-      final bool onWhatsApp = await _platform.invokeMethod('isNumberOnWhatsApp', {'phone': phone});
-      return onWhatsApp;
-    } catch (e) {
-      debugPrint('WhatsApp check error: $e');
-      return false;
-    }
-  }
 
   Future<void> _syncContacts() async {
     if (await Permission.contacts.request().isGranted) {
@@ -139,22 +130,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         setState(() => _loading = true);
                         final cleanPhone = phone.replaceAll(RegExp(r'\s+'), '');
                         
-                        // Check WhatsApp status before adding
-                        final onWhatsApp = await _isNumberOnWhatsApp(cleanPhone);
-                        
                         if (mounted) {
-                          if (onWhatsApp) {
-                            // Add with WhatsApp alert enabled by default
-                            await _fs.addEmergencyContact(_parentUid!, name ?? 'No Name', cleanPhone, '');
-                            _loadContacts();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${name ?? "Contact"} added to emergency contacts')),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${name ?? "Contact"} is not active on WhatsApp')),
-                            );
-                          }
+                          await _fs.addEmergencyContact(_parentUid!, name ?? 'No Name', cleanPhone, '');
+                          _loadContacts();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('${name ?? "Contact"} added to emergency contacts')),
+                          );
                           setState(() => _loading = false);
                         }
                       },
@@ -173,8 +154,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final nameCtrl = TextEditingController();
     String fullPhone = '';
     String countryCode = 'PK';
-    bool isOnWhatsApp = false;
-    bool checkingWhatsApp = false;
 
     showDialog(
       context: context,
@@ -200,44 +179,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   initialCountryCode: countryCode,
-                  onChanged: (phone) async {
+                  onChanged: (phone) {
                     fullPhone = phone.completeNumber;
                     countryCode = phone.countryISOCode;
-                    
-                    // Auto check WhatsApp
-                    if (fullPhone.length > 8) {
-                      setState(() => checkingWhatsApp = true);
-                      final onWA = await _isNumberOnWhatsApp(fullPhone);
-                      setState(() {
-                        isOnWhatsApp = onWA;
-                        checkingWhatsApp = false;
-                      });
-                    }
                   },
                 ),
-                if (checkingWhatsApp)
-                  const LinearProgressIndicator()
-                else if (fullPhone.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isOnWhatsApp ? Icons.check_circle : Icons.error_outline,
-                          color: isOnWhatsApp ? Colors.green : Colors.orange,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isOnWhatsApp ? 'Available on WhatsApp' : 'Not detected on WhatsApp',
-                          style: TextStyle(
-                            color: isOnWhatsApp ? Colors.green : Colors.orange,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
@@ -278,17 +224,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Future<void> _openWhatsApp(String phone) async {
-    String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
-    final Uri url = Uri.parse('https://wa.me/$cleanPhone');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not launch WhatsApp')));
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -305,14 +240,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       floatingActionButton: isParent ? Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
-            heroTag: 'sync',
-            onPressed: _syncContacts,
-            label: const Text('Sync WhatsApp'),
-            icon: const Icon(Icons.sync),
-            backgroundColor: Colors.green,
-          ),
-          const SizedBox(height: 12),
           FloatingActionButton.extended(
             heroTag: 'add',
             onPressed: _addContact,
@@ -375,31 +302,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           icon: const Icon(Icons.call, color: Colors.blue),
                           tooltip: 'Call',
                         ),
-                        // WhatsApp Button
-                        IconButton(
-                          onPressed: () => _openWhatsApp(contact['phone']),
-                          icon: const Icon(Icons.chat_bubble_outline, color: Colors.green),
-                          tooltip: 'WhatsApp',
-                        ),
-                        // WhatsApp Alert Toggle
-                        if (isParent)
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text("Alert", style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.green)),
-                              Switch(
-                                value: contact['whatsappAlert'] ?? true,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                onChanged: (val) async {
-                                  final newContact = Map<String, dynamic>.from(contact);
-                                  newContact['whatsappAlert'] = val;
-                                  await _fs.updateEmergencyContact(_parentUid!, contact, newContact);
-                                  _loadContacts();
-                                },
-                                activeColor: Colors.green,
-                              ),
-                            ],
-                          ),
                         const SizedBox(width: 8),
                         if (isParent)
                           IconButton(

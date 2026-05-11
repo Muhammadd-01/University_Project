@@ -181,7 +181,7 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
                           margin: const EdgeInsets.only(bottom: 12),
                           elevation: 2,
                           child: ListTile(
-                            leading: CircleAvatar(backgroundColor: Colors.blue.withValues(alpha: 0.1), child: const Icon(Icons.radar, color: Colors.blue)),
+                            leading: CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.radar, color: Colors.blue)),
                             title: Text(zone['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text('Radius: ${zone['radius'].toStringAsFixed(0)}m'),
                             trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteZone(zone)),
@@ -192,7 +192,7 @@ class _SafeZoneScreenState extends State<SafeZoneScreen> {
                   const SizedBox(height: 40),
                   Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withValues(alpha: 0.2))),
+                    decoration: BoxDecoration(color: Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withOpacity(0.2))),
                     child: const Row(
                       children: [
                         Icon(Icons.lightbulb_outline, color: Colors.orange),

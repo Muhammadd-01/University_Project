@@ -199,7 +199,7 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                         if (_safeZones.isNotEmpty) CircleLayer(circles: _safeZones.map((z) => CircleMarker(
                           point: LatLng(z['lat'], z['lng']), radius: z['radius'].toDouble(),
-                          useRadiusInMeter: true, color: Colors.blue.withValues(alpha: 0.1), borderColor: Colors.blue, borderStrokeWidth: 1,
+                          useRadiusInMeter: true, color: Colors.blue.withOpacity(0.1), borderColor: Colors.blue, borderStrokeWidth: 1,
                         )).toList()),
                       MarkerLayer(markers: markers),
                     ]),
@@ -234,7 +234,7 @@ class _MapScreenState extends State<MapScreen> {
                           const SizedBox(height: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(20)),
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(20)),
                             child: Text('Live: ${markers.length}/${_childrenProfiles.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                           ),
                         ],

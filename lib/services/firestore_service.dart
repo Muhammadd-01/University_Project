@@ -185,7 +185,7 @@ class FirestoreService {
 
   // Emergency Contacts management
   Future<void> addEmergencyContact(String parentUid, String name, String phone, String countryCode) async {
-    final contact = {'name': name, 'phone': phone, 'countryCode': countryCode, 'whatsappAlert': true};
+    final contact = {'name': name, 'phone': phone, 'countryCode': countryCode};
     await _db.collection('users').doc(parentUid).update({
       'emergencyContacts': FieldValue.arrayUnion([contact])
     });
@@ -249,12 +249,6 @@ class FirestoreService {
     });
   }
 
-  // Child's own WhatsApp linking
-  Future<void> linkWhatsApp(String uid, String phone) async {
-    await _db.collection('users').doc(uid).update({
-      'linkedWhatsApp': phone,
-    });
-  }
 
   // Partner Request System
   Future<bool> sendPartnerRequest(String code, String myUid, String myName) async {

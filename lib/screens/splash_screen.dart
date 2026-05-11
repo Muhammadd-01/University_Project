@@ -31,6 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
           // Save credentials for Native Background Panic Detection
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('uid', user.uid);
+          await prefs.setString('role', data['role']); // Save role for native service
           if (data['connectedTo'] != null) {
             await prefs.setString('parentId', data['connectedTo']);
           }
@@ -84,7 +85,7 @@ class _SplashScreenState extends State<SplashScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white, shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20)],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
@@ -94,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 24),
             const Text('ChildGuard', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
             const SizedBox(height: 8),
-            Text('Keep your child safe', style: TextStyle(fontSize: 16, color: Colors.white.withValues(alpha: 0.8))),
+            Text('Keep your child safe', style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.8))),
             const SizedBox(height: 40),
             const CircularProgressIndicator(color: Colors.white),
           ],
