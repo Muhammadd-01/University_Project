@@ -103,8 +103,16 @@ class _HomeScreenState extends State<HomeScreen> {
       // Sync SharedPreferences for Native Background Panic Detection
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('uid', widget.uid);
+      await prefs.setString('role', widget.role);
       if (data['connectedTo'] != null) {
         await prefs.setString('parentId', data['connectedTo']);
+      }
+      
+      // Tell native service to refresh its listeners with these new credentials
+      try {
+        await _platform.invokeMethod('startService');
+      } catch (e) {
+        debugPrint('Error starting native service: $e');
       }
 
       // If parent, listen for alerts in real-time

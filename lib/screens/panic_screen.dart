@@ -214,21 +214,6 @@ class _PanicScreenState extends State<PanicScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: btnColor)),
               const SizedBox(height: 8),
-              if (!_sent && !_sending)
-                Text('Your emergency contacts will receive SMS automatically',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[600])),
-              if (_sending && _totalContacts > 0) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(
-                  value: _totalContacts > 0 ? _sentCount / _totalContacts : null,
-                  backgroundColor: Colors.red[100],
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.red),
-                ),
-                const SizedBox(height: 8),
-                Text('$_sentCount of $_totalContacts messages sent',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ],
               if (_sent) ...[
                 const SizedBox(height: 16),
                 OutlinedButton(
@@ -242,72 +227,6 @@ class _PanicScreenState extends State<PanicScreen> {
                 ),
               ],
               const SizedBox(height: 40),
-              if (!_accessibilityEnabled)
-                Card(
-                  color: Colors.orange[50],
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        const Row(children: [
-                          Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                          SizedBox(width: 12),
-                          Expanded(child: Text(
-                              'Volume Button Panic is NOT active. Please enable Accessibility Service.',
-                              style: TextStyle(fontSize: 13, color: Colors.orange, fontWeight: FontWeight.bold))),
-                        ]),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _openAccessibilitySettings,
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                          child: const Text('Enable in Settings', style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Card(
-                color: Colors.blue[50],
-                child: const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Row(children: [
-                    Icon(Icons.volume_up, color: Colors.blue),
-                    SizedBox(width: 12),
-                    Expanded(child: Text(
-                        'NEW: Long-press BOTH Volume Up & Down for 2 seconds to trigger panic anytime!',
-                        style: TextStyle(fontSize: 13, color: Colors.blue, fontWeight: FontWeight.bold))),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                color: Colors.green[50],
-                child: const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Row(children: [
-                    Icon(Icons.sms, color: Colors.green),
-                    SizedBox(width: 12),
-                    Expanded(child: Text(
-                        'Emergency alerts are sent automatically via SMS to your contacts.',
-                        style: TextStyle(fontSize: 13, color: Colors.green))),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                color: Colors.grey[50],
-                child: const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Row(children: [
-                    Icon(Icons.power_settings_new, color: Colors.grey),
-                    SizedBox(width: 12),
-                    Expanded(child: Text(
-                        'Power Button triple-press also works as a backup trigger.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey))),
-                  ]),
-                ),
-              ),
             ],
           ),
         ),

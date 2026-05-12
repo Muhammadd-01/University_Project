@@ -47,11 +47,21 @@ class AlertsScreen extends StatelessWidget {
               Text('Your safety events will appear here', style: TextStyle(color: Colors.grey, fontSize: 12)),
             ]));
           }
+
+          final docs = snap.data!.docs;
+          // Sort client-side to avoid needing composite indexes
+          docs.sort((a, b) {
+            final tsA = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final tsB = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (tsA == null || tsB == null) return 0;
+            return tsB.compareTo(tsA); // Descending
+          });
+
           return ListView.builder(
             padding: const EdgeInsets.all(12),
-            itemCount: snap.data!.docs.length,
+            itemCount: docs.length,
             itemBuilder: (context, i) {
-              final a = snap.data!.docs[i].data() as Map<String, dynamic>;
+              final a = docs[i].data() as Map<String, dynamic>;
               final isPanic = a['type'] == 'panic';
               final ts = a['timestamp'] as Timestamp?;
               final time = ts != null ? '${ts.toDate().day}/${ts.toDate().month} ${ts.toDate().hour}:${ts.toDate().minute.toString().padLeft(2, '0')}' : 'Just now';

@@ -85,6 +85,14 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID", "Phone or message is null", null)
                     }
+                } else if (call.method == "startService") {
+                    val serviceIntent = Intent(this, PanicService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                    result.success(true)
                 } else if (call.method == "isAccessibilityServiceEnabled") {
                     result.success(isAccessibilityServiceEnabled())
                 } else if (call.method == "openAccessibilitySettings") {

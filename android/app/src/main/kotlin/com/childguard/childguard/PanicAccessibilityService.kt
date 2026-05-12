@@ -92,13 +92,34 @@ class PanicAccessibilityService : AccessibilityService() {
             
             try {
                 Firebase.firestore.collection("alerts").add(alert)
-                    .addOnSuccessListener { Log.d(TAG, "Panic alert sent to Firestore") }
+                    .addOnSuccessListener { 
+                        Log.d(TAG, "Panic alert sent to Firestore")
+                        // 3. WAKE UP CHILD DEVICE TOO
+                        launchMainActivity("panic", "🚨 Emergency alert sent to parent!")
+                    }
                     .addOnFailureListener { e -> Log.e(TAG, "Failed to send panic alert", e) }
             } catch (e: Exception) {
                 Log.e(TAG, "Firestore error: ${e.message}")
             }
         } else {
             Log.w(TAG, "Cannot send panic: uid or parentId is null")
+            // Launch app anyway so user can see they aren't linked/logged in
+            launchMainActivity("error", "Cannot send panic: Device not properly linked!")
+        }
+    }
+
+    private fun launchMainActivity(type: String, message: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("trigger", "DANGER")
+            putExtra("alertType", type)
+            putExtra("alertMessage", message)
+        }
+        try {
+            startActivity(intent)
+            Log.d(TAG, "Launched MainActivity from Accessibility Service")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch activity: ${e.message}")
         }
     }
 

@@ -1,6 +1,8 @@
 // connect_screen.dart - Parent child connection code se
 import 'package:flutter/material.dart';
 import '../services/firestore_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 class ConnectScreen extends StatefulWidget {
   final String role, uid;
@@ -16,6 +18,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String? _coParentUid, _coParentName;
   List<Map<String, dynamic>> _childrenProfiles = [];
   bool _loading = true;
+  static const _platform = MethodChannel('com.childguard.childguard/sms');
 
   @override
   void initState() { super.initState(); _load(); }
@@ -53,6 +56,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
           _childrenProfiles = profiles;
           _loading = false; 
         });
+        
+        // Sync SharedPreferences for background service
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('uid', widget.uid);
+        await prefs.setString('role', widget.role);
+        if (data['connectedTo'] != null) {
+          await prefs.setString('parentId', data['connectedTo']);
+        }
+        
+        // Refresh native service
+        try {
+          await _platform.invokeMethod('startService');
+        } catch (e) {
+          debugPrint('Error refreshing service: $e');
+        }
       }
     }
   }

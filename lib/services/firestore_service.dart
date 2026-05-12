@@ -113,7 +113,6 @@ class FirestoreService {
     // For now, we'll keep it simple: any alert sent to this parentId.
     return _db.collection('alerts')
         .where('parentId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
@@ -121,7 +120,6 @@ class FirestoreService {
   Stream<QuerySnapshot> getChildAlerts(String childId) {
     return _db.collection('alerts')
         .where('senderId', isEqualTo: childId)
-        .orderBy('timestamp', descending: true)
         .snapshots();
   }
 

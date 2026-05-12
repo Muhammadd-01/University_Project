@@ -58,7 +58,8 @@ class PanicService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Ensure listeners are active if restarted by system
+        Log.d(TAG, "Service onStartCommand called")
+        // Always refresh listeners to pick up new UID/role/parentId from SharedPreferences
         startAlertListenerIfParent()
         startChildLocationTracking()
         return START_STICKY
@@ -334,6 +335,7 @@ class PanicService : Service() {
             registerReceiver(screenReceiver, filter)
         }
     }
+
 
     private fun sendPanicAlert(count: Int) {
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
