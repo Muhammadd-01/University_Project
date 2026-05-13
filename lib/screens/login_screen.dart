@@ -1,7 +1,9 @@
 // login_screen.dart - Email password se login
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../widgets/loading_widget.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
 
@@ -16,7 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passC = TextEditingController();
   final _auth = AuthService();
   bool _loading = false;
-  bool _obscurePassword = true; // State for password visibility
+  bool _obscurePassword = true;
 
   void _login() async {
     if (_emailC.text.isEmpty || _passC.text.isEmpty) {
@@ -33,13 +35,13 @@ class _LoginScreenState extends State<LoginScreen> {
             MaterialPageRoute(builder: (_) => HomeScreen(role: data['role'], uid: cred.user!.uid)));
       }
     } catch (e) {
-      if (mounted) _showError(_getFriendlyError(e.toString()));
+      if (mounted) {
+        setState(() => _loading = false);
+        _showError(_getFriendlyError(e.toString()));
+      }
     }
-    if (mounted) setState(() => _loading = true); // Keep loading true while navigating
-    if (mounted) setState(() => _loading = false);
   }
 
-  // Friendly error messages instead of technical codes
   String _getFriendlyError(String error) {
     if (error.contains('user-not-found') || error.contains('wrong-password') || error.contains('invalid-credential')) {
       return 'Invalid email or password. Please try again.';
@@ -57,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Text(msg),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -68,56 +70,101 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Text(msg),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: LoadingWidget(message: 'Verifying your credentials...'));
+    }
+
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 60),
-              // Header icon
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.shield, size: 50, color: Theme.of(context).colorScheme.primary),
+              // Header animation
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.shield_rounded,
+                    size: 60,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ).animate()
+                 .scale(duration: 600.ms, curve: Curves.easeOutBack)
+                 .rotate(begin: -0.2, end: 0, duration: 600.ms),
               ),
-              const SizedBox(height: 24),
-              Text('Welcome Back', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text('Sign in to continue', style: TextStyle(color: Colors.grey[600])),
               const SizedBox(height: 40),
-              // Email field
+              Text(
+                'Welcome Back',
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black,
+                ),
+              ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.1, end: 0),
+              const SizedBox(height: 8),
+              Text(
+                'Sign in to your ChildGuard account',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.1, end: 0),
+              const SizedBox(height: 50),
+              
+              // Email Field
+              Text(
+                'Email Address',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[800]),
+              ).animate().fadeIn(delay: 400.ms),
+              const SizedBox(height: 10),
               TextField(
                 controller: _emailC,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
-              ),
-              const SizedBox(height: 16),
-              // Password field with Toggle
+                decoration: const InputDecoration(
+                  hintText: 'name@example.com',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1, end: 0),
+              
+              const SizedBox(height: 24),
+              
+              // Password Field
+              Text(
+                'Password',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[800]),
+              ).animate().fadeIn(delay: 500.ms),
+              const SizedBox(height: 10),
               TextField(
                 controller: _passC, 
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
-                  labelText: 'Password', 
+                  hintText: '••••••••',
                   prefixIcon: const Icon(Icons.lock_outlined),
                   suffixIcon: IconButton(
                     icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                   ),
                 ),
-              ),
+              ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.1, end: 0),
+              
               const SizedBox(height: 12),
-              // Forgot Password Link
+              
+              // Forgot Password
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -133,29 +180,52 @@ class _LoginScreenState extends State<LoginScreen> {
                       _showError('Error: Could not send reset email');
                     }
                   },
-                  child: const Text('Forgot Password?'),
-                ),
+                  child: const Text(
+                    'Forgot Password?',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ).animate().fadeIn(delay: 600.ms),
               ),
-              const SizedBox(height: 24),
-              // Login button
+              
+              const SizedBox(height: 40),
+              
+              // Login Button
               SizedBox(
                 width: double.infinity,
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : FilledButton(onPressed: _login, child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-              ),
-              const SizedBox(height: 24),
-              // Register link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Don't have an account? "),
-                  GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                    child: Text('Register', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+                child: ElevatedButton(
+                  onPressed: _login,
+                  child: const Text(
+                    'Sign In',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                ],
-              ),
+                ),
+              ).animate().fadeIn(delay: 700.ms).scale(begin: const Offset(0.9, 0.9)),
+              
+              const SizedBox(height: 30),
+              
+              // Register Link
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Don't have an account? ",
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                      child: Text(
+                        'Register',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(delay: 800.ms),
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -163,3 +233,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

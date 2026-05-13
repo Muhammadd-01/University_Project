@@ -26,6 +26,11 @@ dependencies:
   flutter_contacts: ^2.0.2
   flutter_local_notifications: ^20.1.0
   workmanager: ^0.9.0+3
+  lottie: ^3.3.3
+  flutter_animate: ^4.5.2
+  smooth_page_indicator: ^2.0.1
+  introduction_screen: ^4.0.0
+  google_fonts: ^8.1.0
 
 dev_dependencies:
   flutter_test:

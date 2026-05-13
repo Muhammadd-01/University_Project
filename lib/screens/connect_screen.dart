@@ -1,6 +1,8 @@
-// connect_screen.dart - Parent child connection code se
+// connect_screen.dart - Parent child connection
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../services/firestore_service.dart';
+import '../widgets/loading_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
@@ -57,7 +59,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
           _loading = false; 
         });
         
-        // Sync SharedPreferences for background service
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('uid', widget.uid);
         await prefs.setString('role', widget.role);
@@ -65,7 +66,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
           await prefs.setString('parentId', data['connectedTo']);
         }
         
-        // Refresh native service
         try {
           await _platform.invokeMethod('startService');
         } catch (e) {
@@ -80,7 +80,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (code.isEmpty) return;
     
     setState(() => _loading = true);
-    // Get current user name for the request
     final me = await _fs.getUser(widget.uid);
     final ok = await _fs.sendPartnerRequest(code, widget.uid, me?['name'] ?? 'Partner');
     
@@ -88,7 +87,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
       setState(() => _loading = false);
       _codeC.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ok ? 'Request sent!' : 'Invalid code or already linked')),
+        SnackBar(
+          content: Text(ok ? '✅ Partner request sent!' : '❌ Invalid code or already linked'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       );
     }
   }
@@ -99,10 +102,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final ok = await _fs.connectChild(_codeC.text.trim(), widget.uid);
     if (mounted) {
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid code!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Invalid code!')));
         setState(() => _loading = false);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connected successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Connected successfully!')));
         _load(); 
       }
     }
@@ -110,16 +113,28 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
+    if (_loading) return const Scaffold(body: LoadingWidget(message: 'Loading connections...'));
+
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Connect'), actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
-      ]),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Device Connection', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded, color: Colors.black)),
+        ],
+      ),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 10),
             // ===== PARENT VIEW: Partner Requests =====
             if (widget.role == 'parent' && _coParentUid == null) ...[
               StreamBuilder(
@@ -130,144 +145,233 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Partner Requests:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-                      const SizedBox(height: 8),
+                      const Text('Partner Requests', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
                       ...requests.map((doc) {
                         final req = doc.data() as Map<String, dynamic>;
-                        return Card(
-                          child: ListTile(
-                            leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.person, color: Colors.white)),
-                            title: Text(req['fromName']),
-                            subtitle: const Text('Wants to link as partner'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () async {
-                                  await _fs.acceptPartnerRequest(widget.uid, req['fromUid']);
-                                  _load();
-                                }),
-                                IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async {
-                                  await _fs.rejectPartnerRequest(widget.uid, req['fromUid']);
-                                }),
-                              ],
-                            ),
-                          ),
-                        );
+                        return _buildRequestCard(req, doc.id);
                       }),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 30),
                     ],
-                  );
+                  ).animate().fadeIn().slideY(begin: 0.1, end: 0);
                 },
               ),
             ],
+
             // ===== PARENT VIEW: Linked Partner Info =====
             if (widget.role == 'parent' && _coParentUid != null)
-              Card(
-                color: Colors.blue[50],
-                child: ListTile(
-                  leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.favorite, color: Colors.white)),
-                  title: Text(_coParentName ?? 'Partner Linked'),
-                  subtitle: const Text('Co-Parenting Active'),
-                  trailing: const Icon(Icons.verified, color: Colors.blue),
-                ),
-              ),
-            const SizedBox(height: 20),
+              _buildStatusCard(
+                'Co-Parent Linked',
+                'Successfully linked with ${_coParentName ?? "Partner"}',
+                Icons.favorite_rounded,
+                Colors.pinkAccent,
+              ).animate().fadeIn().scale(),
+
+            const SizedBox(height: 16),
+
             // ===== PARENT VIEW: List all children =====
             if (widget.role == 'parent' && _childrenProfiles.isNotEmpty) ...[
-              const Align(alignment: Alignment.centerLeft, child: Text('Connected Children:', style: TextStyle(fontWeight: FontWeight.bold))),
+              const Text('Connected Children', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _childrenProfiles.length,
                 itemBuilder: (context, i) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.child_care)),
-                      title: Text(_childrenProfiles[i]['name'] ?? 'Unknown Child'),
-                      subtitle: Text(_childrenProfiles[i]['email'] ?? ''),
-                      trailing: const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    ),
+                  return _buildConnectionCard(
+                    _childrenProfiles[i]['name'] ?? 'Child',
+                    _childrenProfiles[i]['email'] ?? '',
+                    Icons.child_care_rounded,
+                    colorScheme.primary,
                   );
                 },
-              ),
-              const SizedBox(height: 20),
+              ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0),
+              const SizedBox(height: 30),
             ],
+
             // ===== CHILD VIEW: Show parent info =====
             if (widget.role == 'child' && _connectedTo != null)
-              Card(
-                color: Colors.green[50],
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.check_circle, color: Colors.green, size: 28),
-                        SizedBox(width: 12),
-                        Text('Connected!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
-                      ]),
-                      if (_connectedName != null || _connectedEmail != null) ...[
-                        const SizedBox(height: 8),
-                        Text('Linked with: ${_connectedName ?? _connectedEmail}', style: TextStyle(color: Colors.green[700], fontSize: 13)),
-                      ]
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 30),
-            // Parent view - show code
-            if (widget.role == 'parent' && _code != null) ...[
-              Icon(Icons.qr_code, size: 60, color: color.primary),
-              const SizedBox(height: 16),
-              const Text('Shared Connection Code', style: TextStyle(fontSize: 16)),
-              const SizedBox(height: 12),
-              Center(
-                child: Card(
-                  color: color.primaryContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
-                    child: Text(
-                      _code!, 
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, letterSpacing: 10, color: color.primary),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text('Share this code with your child', style: TextStyle(color: Colors.grey[600])),
-              if (_coParentUid == null) ...[
-                const SizedBox(height: 30),
-                const Divider(),
-                const SizedBox(height: 10),
-                const Text('Link with Spouse / Partner', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _codeC, keyboardType: TextInputType.number, textAlign: TextAlign.center,
-                  decoration: const InputDecoration(hintText: 'Enter Partner Code'),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _sendPartnerRequest, icon: const Icon(Icons.link), label: const Text('Send Link Request'))),
-              ]
-            ],
-            // Child view - enter code
-            if (widget.role == 'child' && _connectedTo == null) ...[
-              Icon(Icons.link, size: 60, color: color.primary),
-              const SizedBox(height: 16),
-              const Text('Enter Parent\'s Code', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _codeC, keyboardType: TextInputType.number, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 24, letterSpacing: 8),
-                decoration: const InputDecoration(hintText: '000000'),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(width: double.infinity, child: FilledButton(onPressed: _connect, child: const Text('Connect'))),
-            ],
+              _buildStatusCard(
+                'Safety Linked!',
+                'You are connected to ${_connectedName ?? _connectedEmail}',
+                Icons.verified_user_rounded,
+                Colors.green,
+              ).animate().fadeIn().scale(),
+
+            const SizedBox(height: 20),
+
+            // Main Action Area
+            if (widget.role == 'parent') _buildParentActionArea(colorScheme),
+            if (widget.role == 'child' && _connectedTo == null) _buildChildActionArea(colorScheme),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildRequestCard(Map<String, dynamic> req, String docId) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(backgroundColor: Colors.orange.withOpacity(0.1), child: const Icon(Icons.person_rounded, color: Colors.orange)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(req['fromName'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Wants to share monitoring', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
+            onPressed: () async {
+              await _fs.acceptPartnerRequest(widget.uid, req['fromUid']);
+              _load();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.cancel_rounded, color: Colors.redAccent),
+            onPressed: () async {
+              await _fs.rejectPartnerRequest(widget.uid, req['fromUid']);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusCard(String title, String subtitle, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 40),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+                Text(subtitle, style: TextStyle(fontSize: 14, color: color.withOpacity(0.8))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectionCard(String title, String subtitle, IconData icon, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        trailing: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+      ),
+    );
+  }
+
+  Widget _buildParentActionArea(ColorScheme colorScheme) {
+    return Column(
+      children: [
+        const Center(child: Text('Your Unique Connection Code', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey))),
+        const SizedBox(height: 20),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 30),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: colorScheme.primary.withOpacity(0.1), width: 2),
+          ),
+          child: Text(
+            _code ?? '000000',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: 10, color: colorScheme.primary),
+          ),
+        ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
+        const SizedBox(height: 16),
+        const Text('Share this code with your child to link devices', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+        
+        if (_coParentUid == null) ...[
+          const SizedBox(height: 50),
+          const Divider(),
+          const SizedBox(height: 20),
+          const Text('Link with a Spouse / Partner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _codeC,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(hintText: 'Enter Partner Code'),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _sendPartnerRequest, 
+              icon: const Icon(Icons.person_add_rounded), 
+              label: const Text('Send Connection Request'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildChildActionArea(ColorScheme colorScheme) {
+    return Column(
+      children: [
+        const Center(child: Icon(Icons.link_rounded, size: 80, color: Colors.indigo)),
+        const SizedBox(height: 20),
+        const Text('Connect to Parent', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 10),
+        const Text('Enter the 6-digit code shown on your parent\'s device', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 40),
+        TextField(
+          controller: _codeC,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 12),
+          decoration: const InputDecoration(hintText: '000000'),
+        ),
+        const SizedBox(height: 30),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _connect,
+            child: const Text('Establish Connection', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ).animate().fadeIn(delay: 400.ms).scale(),
+      ],
+    );
+  }
 }
+

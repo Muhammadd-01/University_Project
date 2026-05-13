@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/firestore_service.dart';
+import '../widgets/loading_widget.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String uid, role;
-  const ContactsScreen({Key? key, required this.uid, required this.role}) : super(key: key);
+  const ContactsScreen({super.key, required this.uid, required this.role});
 
   @override
   State<ContactsScreen> createState() => _ContactsScreenState();
@@ -19,7 +21,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _contacts = [];
   String? _parentUid;
-  static const _platform = MethodChannel('com.childguard.childguard/sms');
 
   @override
   void initState() {
@@ -50,106 +51,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-
-  Future<void> _syncContacts() async {
-    if (await Permission.contacts.request().isGranted) {
-      setState(() => _loading = true);
-      final contacts = await fc.FlutterContacts.getAll(
-        properties: {fc.ContactProperty.name, fc.ContactProperty.phone},
-      );
-      setState(() => _loading = false);
-
-      if (mounted) {
-        _showContactSelectionDialog(contacts);
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contacts permission denied')),
-        );
-      }
-    }
-  }
-
-  void _showContactSelectionDialog(List<fc.Contact> allContacts) {
-    // Filter contacts that have phone numbers
-    final validContacts = allContacts.where((c) => c.phones.isNotEmpty).toList();
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.8,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (_, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.all(12),
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  children: [
-                    const Text("Select Emergency Contacts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: validContacts.length,
-                  itemBuilder: (context, index) {
-                    final contact = validContacts[index];
-                    final String? name = contact.displayName;
-                    final String phone = contact.phones.first.number;
-                    final isAlreadyAdded = _contacts.any((c) => c['phone'] == phone.replaceAll(RegExp(r'\s+'), ''));
-
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.blue.withOpacity(0.1),
-                        child: Text((name != null && name.isNotEmpty) ? name[0].toUpperCase() : "?"),
-                      ),
-                      title: Text(name ?? 'No Name'),
-                      subtitle: Text(phone),
-                      trailing: isAlreadyAdded 
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : const Icon(Icons.add_circle_outline, color: Colors.blue),
-                      onTap: isAlreadyAdded ? null : () async {
-                        Navigator.pop(context); // Close picker
-                        setState(() => _loading = true);
-                        final cleanPhone = phone.replaceAll(RegExp(r'\s+'), '');
-                        
-                        if (mounted) {
-                          await _fs.addEmergencyContact(_parentUid!, name ?? 'No Name', cleanPhone, '');
-                          _loadContacts();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${name ?? "Contact"} added to emergency contacts')),
-                          );
-                          setState(() => _loading = false);
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _addContact() {
     final nameCtrl = TextEditingController();
     String fullPhone = '';
@@ -159,24 +60,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Add Emergency Contact'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text('Add Contact', style: TextStyle(fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: nameCtrl, 
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Name', 
-                    prefixIcon: const Icon(Icons.person),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: Icon(Icons.person_outline),
                   ),
                 ),
                 const SizedBox(height: 16),
                 IntlPhoneField(
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Phone Number',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   initialCountryCode: countryCode,
                   onChanged: (phone) {
@@ -189,22 +89,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
+            ElevatedButton(
               onPressed: () async {
                 final name = nameCtrl.text.trim();
                 if (name.isNotEmpty && fullPhone.isNotEmpty) {
                   await _fs.addEmergencyContact(_parentUid!, name, fullPhone, countryCode);
-                  // Ensure newly added contacts have the flag in local state too if needed, 
-                  // but _loadContacts() will refresh everything.
                   Navigator.pop(ctx);
                   _loadContacts();
-                } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter name and valid phone number')),
-                  );
                 }
               },
-              child: const Text('Add'),
+              child: const Text('Add to SOS'),
             ),
           ],
         ),
@@ -224,97 +118,116 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final isParent = widget.role == 'parent';
-    final color = Theme.of(context).colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Emergency Contacts'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Emergency Contacts', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(onPressed: _loadContacts, icon: const Icon(Icons.refresh)),
+          IconButton(onPressed: _loadContacts, icon: const Icon(Icons.refresh_rounded, color: Colors.black)),
         ],
       ),
-      floatingActionButton: isParent ? Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'add',
-            onPressed: _addContact,
-            label: const Text('Add Contact'),
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ) : null,
       body: _loading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const LoadingWidget(message: 'Syncing contacts...')
         : _contacts.isEmpty 
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.contact_phone_outlined, size: 80, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text('No emergency contacts added yet.', style: TextStyle(color: Colors.grey[600])),
-                  if (isParent) TextButton(onPressed: _addContact, child: const Text('Add one now')),
+                  const Icon(Icons.contact_phone_outlined, size: 80, color: Colors.grey),
+                  const SizedBox(height: 20),
+                  const Text('No SOS contacts yet.', style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.w500)),
+                  if (isParent) ...[
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _addContact, 
+                      icon: const Icon(Icons.add_rounded), 
+                      label: const Text('Add First Contact'),
+                    ),
+                  ],
                 ],
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               itemCount: _contacts.length,
               itemBuilder: (context, index) {
                 final contact = _contacts[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: color.primaryContainer,
-                          child: Text(contact['name'][0].toUpperCase(), style: TextStyle(color: color.primary, fontWeight: FontWeight.bold)),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(contact['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  const SizedBox(width: 8),
-                                  if (contact['countryCode'] != null)
-                                    Text('(${contact['countryCode']})', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                                ],
-                              ),
-                              Text(contact['phone'], style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-                            ],
-                          ),
-                        ),
-                        // Call Button
-                        IconButton(
-                          onPressed: () => _makeCall(contact['phone']),
-                          icon: const Icon(Icons.call, color: Colors.blue),
-                          tooltip: 'Call',
-                        ),
-                        const SizedBox(width: 8),
-                        if (isParent)
-                          IconButton(
-                            onPressed: () => _deleteContact(contact),
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            tooltip: 'Delete',
-                          ),
-                      ],
-                    ),
-                  ),
-                );
+                return _buildContactCard(contact, isParent, colorScheme)
+                    .animate(delay: (index * 100).ms)
+                    .fadeIn()
+                    .slideY(begin: 0.1, end: 0);
               },
             ),
+      floatingActionButton: isParent ? FloatingActionButton.extended(
+        onPressed: _addContact,
+        label: const Text('New SOS Contact'),
+        icon: const Icon(Icons.person_add_rounded),
+        elevation: 4,
+      ).animate().scale(delay: 400.ms, curve: Curves.elasticOut) : null,
+    );
+  }
+
+  Widget _buildContactCard(Map<String, dynamic> contact, bool isParent, ColorScheme colorScheme) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 25,
+            backgroundColor: colorScheme.primary.withOpacity(0.1),
+            child: Text(
+              contact['name'][0].toUpperCase(), 
+              style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.w900, fontSize: 18),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(contact['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 2),
+                Text(contact['phone'], style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _makeCall(contact['phone']),
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+              child: const Icon(Icons.call_rounded, color: Colors.green, size: 20),
+            ),
+          ),
+          if (isParent)
+            IconButton(
+              onPressed: () => _deleteContact(contact),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), shape: BoxShape.circle),
+                child: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
+

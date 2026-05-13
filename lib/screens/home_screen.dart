@@ -1,16 +1,18 @@
-// home_screen.dart - Main dashboard, role ke hisab se buttons
+// home_screen.dart - Main dashboard
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
+import '../widgets/loading_widget.dart';
 import 'login_screen.dart';
 import 'connect_screen.dart';
 import 'map_screen.dart';
 import 'panic_screen.dart';
 import 'alerts_screen.dart';
-import 'safe_zone_screen.dart'; // Added for boundary management
+import 'safe_zone_screen.dart';
 import 'contacts_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:workmanager/workmanager.dart';
@@ -30,21 +32,23 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _locationTimer;
   final _locService = LocationService();
   final _fsService = FirestoreService();
-   String? _userName;
-  String _trackingStatus = 'Initializing...'; // Track GPS status
-  DateTime? _lastAlertTime; // Cooldown for alerts
+  String? _userName;
+  String _trackingStatus = 'Initializing...';
+  DateTime? _lastAlertTime;
   StreamSubscription? _alertSub;
   static const _platform = MethodChannel('com.childguard.childguard/sms');
   static const _eventChannel = EventChannel('com.childguard.childguard/power_button');
   final _notifications = FlutterLocalNotificationsPlugin();
   StreamSubscription? _nativeSub;
+  bool _isLoading = true;
+  bool _isLoggingOut = false;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _initNotifications();
-    _startTracking(); // Everyone tracks for two-way safety
+    _startTracking();
     _listenToNativeEvents();
     _checkInitialAlert();
   }
@@ -80,14 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
     const InitializationSettings settings = InitializationSettings(android: android);
     await _notifications.initialize(settings: settings);
     
-    // Request notification permission for Android 13+
     if (widget.role == 'parent') {
       await Permission.notification.request();
-      // Draw over apps permission (needed for auto-open on some devices)
       await Permission.systemAlertWindow.request();
     } else if (widget.role == 'child') {
       await Permission.notification.request();
-      // Request Foreground then Background location for continuous tracking
       var status = await Permission.location.request();
       if (status.isGranted) {
         await Permission.locationAlways.request();
@@ -98,9 +99,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _loadProfile() async {
     final data = await _fsService.getUser(widget.uid);
     if (mounted && data != null) {
-      setState(() => _userName = data['name']);
+      setState(() {
+        _userName = data['name'];
+        _isLoading = false;
+      });
       
-      // Sync SharedPreferences for Native Background Panic Detection
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('uid', widget.uid);
       await prefs.setString('role', widget.role);
@@ -108,24 +111,21 @@ class _HomeScreenState extends State<HomeScreen> {
         await prefs.setString('parentId', data['connectedTo']);
       }
       
-      // Tell native service to refresh its listeners with these new credentials
       try {
         await _platform.invokeMethod('startService');
       } catch (e) {
         debugPrint('Error starting native service: $e');
       }
 
-      // If parent, listen for alerts in real-time
       if (widget.role == 'parent') {
         _startAlertListener();
       }
 
-      // Start background task if child
       if (widget.role == 'child') {
         Workmanager().registerPeriodicTask(
           "1", 
           "geofenceCheck",
-          frequency: const Duration(minutes: 15), // Android minimum
+          frequency: const Duration(minutes: 15),
           constraints: Constraints(networkType: NetworkType.connected),
         );
       }
@@ -148,9 +148,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (pos != null) {
       await _fsService.updateLocation(widget.uid, pos.latitude, pos.longitude);
       _checkBoundary(pos.latitude, pos.longitude);
-      if (mounted) setState(() => _trackingStatus = 'Tracking Active! ✅');
+      if (mounted) setState(() => _trackingStatus = 'Active');
     } else {
-      if (mounted) setState(() => _trackingStatus = 'GPS Error! ⚠️');
+      if (mounted) setState(() => _trackingStatus = 'GPS Error');
     }
   }
 
@@ -160,7 +160,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final lastAlert = snapshot.docs.first.data() as Map<String, dynamic>;
         final timestamp = lastAlert['timestamp'] as Timestamp?;
         
-        // Only notify if alert is newer than 1 minute (prevents old alert spam on login)
         if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
           _showEmergencyDialog(lastAlert['message'], lastAlert['type']);
         }
@@ -174,14 +173,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showEmergencyDialog(String message, String type) async {
     if (!mounted || _isShowingDanger) return;
     
-    // Prevent duplicate triggers within 10 seconds
     if (_lastDangerTime != null && DateTime.now().difference(_lastDangerTime!).inSeconds < 10) return;
     _lastDangerTime = DateTime.now();
 
     _isShowingDanger = true;
     
-    // 1. Trigger System Notification (High Importance)
-    // Using ID 100 to overwrite the native service notification instead of duplicating
     final androidDetails = AndroidNotificationDetails(
       'EmergencyAlertChannel', 
       '🚨 EMERGENCY ALERTS',
@@ -200,26 +196,19 @@ class _HomeScreenState extends State<HomeScreen> {
       notificationDetails: NotificationDetails(android: androidDetails),
     );
 
-    // 2. Bring App to Foreground if hidden
     try {
       await _platform.invokeMethod('bringToForeground');
     } catch (e) {
       debugPrint('Bring to foreground error: $e');
     }
 
-    // 3. Show Danger Splash Screen and wait for it to close
     await Navigator.push(context, MaterialPageRoute(builder: (_) => DangerScreen(message: message, type: type)));
-    
-    // Reset flag after user closes the danger screen
     _isShowingDanger = false;
   }
 
-
-   // Boundary check - child safe zone mein hai ya bahar
   Future<void> _checkBoundary(double lat, double lng) async {
-    if (widget.role == 'parent') return; // Parents don't check their own boundary
+    if (widget.role == 'parent') return;
     
-    // Alert cooldown (don't spam alerts more than once every 5 minutes)
     if (_lastAlertTime != null && DateTime.now().difference(_lastAlertTime!).inMinutes < 5) {
       return;
     }
@@ -230,7 +219,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final zones = await _fsService.getSafeZones(user['connectedTo']);
     if (zones.isEmpty) return;
     
-    // Child is SAFE if they are inside ANY zone
     bool isInsideAny = false;
     double minDistance = double.infinity;
     
@@ -263,57 +251,88 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to sign out?'),
+        title: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Are you sure you want to sign out from ChildGuard?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), 
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent, 
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
             onPressed: () async {
-              Navigator.pop(ctx); // Close dialog
+              Navigator.pop(ctx);
+              setState(() => _isLoggingOut = true);
+              
+              // Simulated delay for premium animation feel
+              await Future.delayed(const Duration(milliseconds: 1500));
               await AuthService().logout();
-              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+              
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear(); // Clear UID/Role on logout
+              
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context, 
+                  PageRouteBuilder(
+                    transitionDuration: const Duration(milliseconds: 800),
+                    pageBuilder: (context, animation, secondaryAnimation) => const LoginScreen(),
+                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
+                );
+              }
             },
-            child: const Text('Logout'),
+            child: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-
   void _linkCoParent() {
     final codeCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Link with Mom/Dad'),
+        title: const Text('Link with Partner', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Enter your spouse\'s connection code to send a link request.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 16),
+            const Text('Enter your spouse\'s connection code to share child monitoring.', style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const SizedBox(height: 20),
             TextField(
               controller: codeCtrl,
-              decoration: const InputDecoration(labelText: 'Connection Code', border: OutlineInputBorder(), prefixIcon: Icon(Icons.pin)),
+              decoration: const InputDecoration(
+                labelText: 'Connection Code',
+                prefixIcon: Icon(Icons.pin_outlined),
+              ),
               keyboardType: TextInputType.number,
             ),
           ],
         ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
+          ElevatedButton(
             onPressed: () async {
               if (codeCtrl.text.isNotEmpty) {
                 final ok = await _fsService.sendPartnerRequest(codeCtrl.text, widget.uid, _userName ?? 'Partner');
                 Navigator.pop(ctx);
-                if (ok) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Request Sent! Waiting for partner to approve.')));
-                } else {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Invalid Code or Already Linked')));
+                if (ok && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Request Sent!')));
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Invalid Code')));
                 }
               }
             },
-            child: const Text('Send Request'),
+            child: const Text('Send'),
           ),
         ],
       ),
@@ -324,100 +343,301 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoggingOut) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: LoadingWidget(message: 'Securing your session and signing out...'),
+      );
+    }
+    if (_isLoading) return const Scaffold(body: LoadingWidget(message: 'Syncing your profile...'));
+
     final isParent = widget.role == 'parent';
-    final color = Theme.of(context).colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('ChildGuard', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.logout), tooltip: 'Logout')],
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('ChildGuard', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 24)),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+            ),
+            child: IconButton(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Role card with icon
-            Card(
-              color: color.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 28, backgroundColor: color.primary,
-                      child: Icon(isParent ? Icons.person : Icons.child_care, color: Colors.white, size: 30),
-                    ),
-                    const SizedBox(width: 16),
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_userName ?? (isParent ? 'Parent' : 'Child'),
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      Text(AuthService().currentUser?.email ?? '', // Show Email as secondary
-                          style: TextStyle(color: color.primary, fontSize: 13, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 2),
-                      Text(isParent ? 'Monitoring active' : 'Tracking active',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                       if (!isParent) ...[
-                        const SizedBox(height: 4),
-                        Text(_trackingStatus, style: TextStyle(color: _trackingStatus.contains('Active') ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                      if (isParent) ...[
-                        const SizedBox(height: 4),
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
-                          builder: (context, snapshot) {
-                            final data = snapshot.data?.data() as Map<String, dynamic>?;
-                            final hasCo = data?['coParent'] != null;
-                            return ActionChip(
-                              avatar: Icon(hasCo ? Icons.people : Icons.person_add, size: 16, color: hasCo ? Colors.indigo : Colors.grey),
-                              label: Text(hasCo ? 'Network Shared' : 'Link Mom/Dad', style: const TextStyle(fontSize: 10)),
-                              onPressed: hasCo ? null : _linkCoParent,
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            );
-                          }
-                        ),
-                      ],
-                    ]),
-                  ],
-                ),
+            // User Profile Card
+            _buildProfileCard(isParent, colorScheme).animate().fadeIn(duration: 600.ms).slideY(begin: 0.1, end: 0),
+            
+            const SizedBox(height: 30),
+            
+            Text(
+              'Security Dashboard',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Colors.grey[800],
               ),
+            ).animate().fadeIn(delay: 200.ms),
+            
+            const SizedBox(height: 16),
+            
+            // Grid of menu items
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.1,
+              children: [
+                _buildMenuCard(
+                  Icons.link_rounded, 
+                  'Connect', 
+                  'Link Devices', 
+                  colorScheme.primary,
+                  () => _navigate(ConnectScreen(role: widget.role, uid: widget.uid)),
+                ).animate(delay: 200.ms).fadeIn().scale(),
+                
+                _buildMenuCard(
+                  Icons.map_rounded, 
+                  'Live Map', 
+                  'Real-time', 
+                  const Color(0xFF10B981),
+                  () => _navigate(MapScreen(uid: widget.uid, role: widget.role)),
+                ).animate(delay: 300.ms).fadeIn().scale(),
+                
+                if (isParent)
+                  _buildMenuCard(
+                    Icons.shield_rounded, 
+                    'Safe Zone', 
+                    'Geofencing', 
+                    Colors.indigo,
+                    () => _navigate(SafeZoneScreen(uid: widget.uid)),
+                  ).animate(delay: 400.ms).fadeIn().scale(),
+                
+                _buildMenuCard(
+                  Icons.notifications_active_rounded, 
+                  'Activity', 
+                  'Logs', 
+                  Colors.orangeAccent,
+                  () => _navigate(AlertsScreen(uid: widget.uid, role: widget.role)),
+                ).animate(delay: 500.ms).fadeIn().scale(),
+
+                _buildMenuCard(
+                  Icons.contacts_rounded, 
+                  'SOS List', 
+                  'Contacts', 
+                  Colors.redAccent,
+                  () => _navigate(ContactsScreen(uid: widget.uid, role: widget.role)),
+                ).animate(delay: 600.ms).fadeIn().scale()
+                 .shimmer(delay: 3000.ms, duration: 2000.ms),
+
+                if (!isParent)
+                  _buildMenuCard(
+                    Icons.warning_rounded, 
+                    'PANIC', 
+                    'Emergency', 
+                    Colors.red,
+                    () => _navigate(PanicScreen(uid: widget.uid)),
+                  ).animate(onPlay: (c) => c.repeat())
+                   .shimmer(delay: 1000.ms, duration: 1000.ms)
+                   .scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 500.ms, curve: Curves.easeInOut),
+              ],
             ),
-            const SizedBox(height: 24),
-            // Menu buttons
-            _menuBtn(Icons.link, 'Connect', 'Link parent & child', color.primary,
-                () => _navigate(ConnectScreen(role: widget.role, uid: widget.uid))),
-            _menuBtn(Icons.map, 'Live Map', isParent ? 'View child location' : 'View parent location', Colors.green,
-                () => _navigate(MapScreen(uid: widget.uid, role: widget.role))),
-            if (isParent)
-              _menuBtn(Icons.shield, 'Safe Zone', 'Manage safety boundaries', Colors.indigo,
-                  () => _navigate(SafeZoneScreen(uid: widget.uid))),
-            _menuBtn(Icons.contact_phone, 'Emergency Contacts', isParent ? 'Manage contacts' : 'View contacts', Colors.teal,
-                () => _navigate(ContactsScreen(uid: widget.uid, role: widget.role))),
-            if (!isParent)
-              _menuBtn(Icons.warning_rounded, 'Panic Button', 'Send emergency alert', Colors.red,
-                  () => _navigate(PanicScreen(uid: widget.uid))),
-            _menuBtn(Icons.notifications, 'Alerts', 'View all alerts', Colors.orange,
-                () => _navigate(AlertsScreen(uid: widget.uid, role: widget.role))),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  // Reusable menu button widget
-  Widget _menuBtn(IconData icon, String title, String subtitle, Color iconColor, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Card(
-        child: ListTile(
-          onTap: onTap,
-          leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.15), child: Icon(icon, color: iconColor)),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  Widget _buildProfileCard(bool isParent, ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [colorScheme.primary, colorScheme.primary.withBlue(200)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            child: CircleAvatar(
+              radius: 30,
+              backgroundColor: colorScheme.primary.withOpacity(0.1),
+              child: Icon(isParent ? Icons.person_rounded : Icons.child_care_rounded, color: colorScheme.primary, size: 35),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _userName ?? 'User',
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  widget.role.toUpperCase(),
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1),
+                ),
+                const SizedBox(height: 8),
+                if (!isParent)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.circle, color: Colors.greenAccent, size: 8),
+                        const SizedBox(width: 6),
+                        Text(
+                          'GPS: $_trackingStatus',
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (isParent)
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
+                    builder: (context, snapshot) {
+                      final data = snapshot.data?.data() as Map<String, dynamic>?;
+                      final hasCo = data?['coParent'] != null;
+                      return GestureDetector(
+                        onTap: hasCo ? null : _linkCoParent,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(hasCo ? Icons.people_rounded : Icons.person_add_rounded, color: Colors.white, size: 14),
+                              const SizedBox(width: 6),
+                              Text(
+                                hasCo ? 'Family Network Active' : 'Link Mom/Dad',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildMenuCard(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // Subtle background decoration
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.05),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(icon, color: color, size: 32),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true))
+                     .shimmer(delay: 2000.ms, duration: 1500.ms, color: Colors.white.withOpacity(0.5))
+                     .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 2000.ms, curve: Curves.easeInOut),
+                    
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[500], fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate()
+     .fadeIn(duration: 600.ms)
+     .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic)
+     .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1));
   }
 }
