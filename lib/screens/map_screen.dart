@@ -8,6 +8,7 @@ import '../services/firestore_service.dart';
 import '../services/location_service.dart';
 import '../widgets/loading_widget.dart';
 
+// Yeh screen live map dikhati hai jahan parent apne bacho ko real-time track kar sakte hain
 class MapScreen extends StatefulWidget {
   final String uid, role;
   const MapScreen({super.key, required this.uid, required this.role});
@@ -18,11 +19,12 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final _fs = FirestoreService();
   final _ls = LocationService();
-  final _mapCtrl = MapController();
+  final _mapCtrl = MapController(); // Map ko control (zoom/pan) karne ke liye
   List<Map<String, dynamic>> _childrenProfiles = [];
   List<Map<String, dynamic>> _safeZones = [];
   bool _loading = true;
 
+  // Map par mukhtalif bacho ke liye mukhtalif rang ke markers
   final List<Color> _markerColors = [
     const Color(0xFF6366F1), // Indigo
     const Color(0xFF10B981), // Emerald
@@ -35,17 +37,21 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() { super.initState(); _load(); }
 
+  // User ka data, bacho ki list, aur safe zones (geofences) load karna
   void _load() async {
     final user = await _fs.getUser(widget.uid);
     List<dynamic> targetUids = [];
     
+    // Agar parent hai toh uske sub bacho ka data laao
     if (widget.role == 'parent') {
       targetUids = user?['children'] ?? [];
     } else {
+      // Agar child hai toh apne parent ka data dekho
       final parentUid = user?['connectedTo'];
       if (parentUid != null) {
         targetUids.add(parentUid);
         final parentData = await _fs.getUser(parentUid);
+        // Agar ami/abu dono hain toh dono ko list me dalo
         if (parentData != null && parentData['coParent'] != null) {
           targetUids.add(parentData['coParent']);
         }
@@ -57,22 +63,27 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
+    // Bacho ki profiles aur geofence zones database se lana
     final profiles = await _fs.getChildrenProfiles(targetUids);
     final zones = await _fs.getSafeZones(widget.role == 'parent' ? widget.uid : user?['connectedTo']);
     
     if (mounted) setState(() { _childrenProfiles = profiles; _safeZones = zones; _loading = false; });
   }
 
+  // Kisi makhsoos bachay ke marker par map focus karna aur uski doori (distance) dikhana
   void _focusChild(String name, LatLng pos) async {
-    _mapCtrl.move(pos, 17);
+    _mapCtrl.move(pos, 17); // Map wahan le jao aur thora zoom karo
 
+    // Parent ki apni location
     final myPos = await _ls.getCurrentLocation();
     if (myPos != null) {
       final meters = _ls.getDistance(myPos.latitude, myPos.longitude, pos.latitude, pos.longitude);
+      // Agar 1000m (1km) se kam hai toh meters me warna km me dikhao
       String distText = meters < 1000 
           ? "${meters.round()}m away" 
           : "${(meters / 1000).toStringAsFixed(1)}km away";
 
+      // Neeche se ek chota sa popup (bottom sheet) nikal kar information dikhana
       if (mounted) {
         showModalBottomSheet(
           context: context,
@@ -135,7 +146,7 @@ class _MapScreenState extends State<MapScreen> {
     if (_loading) return const Scaffold(body: LoadingWidget(message: 'Initializing map...'));
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: true, // App bar ke peechay bhi map nazar aye
       appBar: AppBar(
         backgroundColor: Colors.white.withOpacity(0.9),
         elevation: 0,
@@ -148,6 +159,7 @@ class _MapScreenState extends State<MapScreen> {
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded, color: Colors.black)),
         ],
       ),
+      // Stream builder database se live location sun raha hai (real-time updates)
       body: StreamBuilder<QuerySnapshot>(
         stream: _fs.getMultiLocationStream(_childrenProfiles.map((p) => p['uid']?.toString()).whereType<String>().toList()),
         builder: (context, snapshot) {
@@ -157,6 +169,7 @@ class _MapScreenState extends State<MapScreen> {
           List<Map<String, dynamic>> activeChildren = [];
           LatLng? firstLoc;
 
+          // Jab live location data ajaye toh usay parse karna
           if (snapshot.hasData) {
             for (var doc in snapshot.data!.docs) {
               final loc = doc.data() as Map<String, dynamic>;
@@ -171,10 +184,12 @@ class _MapScreenState extends State<MapScreen> {
 
               activeChildren.add({'name': name, 'pos': pos, 'color': color});
 
+              // Map ke upar dikhne wala pin (marker) banana
               markers.add(Marker(
                 point: pos, width: 120, height: 120,
                 child: Column(
                   children: [
+                    // Bachay ka naam marker ke oopar
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
@@ -185,6 +200,7 @@ class _MapScreenState extends State<MapScreen> {
                       child: Text(name, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900)),
                     ),
                     const SizedBox(height: 4),
+                    // Location pin jisme peeche thora dhak dhak (pulse) effect hai
                     Stack(
                       alignment: Alignment.center,
                       children: [
@@ -201,6 +217,7 @@ class _MapScreenState extends State<MapScreen> {
             }
           }
 
+          // Agar kisi ki bhi location nahi mili
           if (markers.isEmpty) {
             return Center(
               child: Column(
@@ -218,19 +235,22 @@ class _MapScreenState extends State<MapScreen> {
 
           return Stack(
             children: [
+              // Main Map ka widget
               FlutterMap(
                 mapController: _mapCtrl, 
                 options: MapOptions(
-                  initialCenter: firstLoc ?? const LatLng(0, 0), 
+                  initialCenter: firstLoc ?? const LatLng(0, 0), // Pehli location par map center karo
                   initialZoom: 15,
                   interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
                 ), 
                 children: [
+                  // Map ki tiles (background imagery - cartocdn voyager theme)
                   TileLayer(
                     urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
                     subdomains: const ['a', 'b', 'c', 'd'],
                     userAgentPackageName: 'com.childguard.childguard',
                   ),
+                  // Agar safe zones define kiye gaye hain toh wo gol (circles) draw karo
                   if (_safeZones.isNotEmpty) CircleLayer(circles: _safeZones.map((z) => CircleMarker(
                     point: LatLng(z['lat'], z['lng']), radius: z['radius'].toDouble(),
                     useRadiusInMeter: true, 
@@ -238,11 +258,12 @@ class _MapScreenState extends State<MapScreen> {
                     borderColor: const Color(0xFF6366F1), 
                     borderStrokeWidth: 2,
                   )).toList()),
+                  // Locations ke markers draw karo
                   MarkerLayer(markers: markers),
                 ],
               ),
               
-              // Bottom Carousel
+              // Map ke neeche bacho ke naam wala slider (Carousel)
               Positioned(
                 bottom: 30, left: 0, right: 0,
                 child: Column(
@@ -255,12 +276,13 @@ class _MapScreenState extends State<MapScreen> {
                         itemCount: activeChildren.length,
                         itemBuilder: (context, index) {
                           final child = activeChildren[index];
+                          // Har bachay ke liye ek chip banegi jisko click kar ke map udhar chala jayega
                           return Container(
                             margin: const EdgeInsets.only(right: 12),
                             child: ActionChip(
                               avatar: Container(width: 10, height: 10, decoration: BoxDecoration(color: child['color'], shape: BoxShape.circle)),
                               label: Text(child['name'], style: const TextStyle(fontWeight: FontWeight.w900)),
-                              onPressed: () => _focusChild(child['name'], child['pos']),
+                              onPressed: () => _focusChild(child['name'], child['pos']), // Click par focus wala function
                               backgroundColor: Colors.white,
                               elevation: 8,
                               shadowColor: Colors.black26,

@@ -21,6 +21,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'danger_screen.dart';
 
+// Yeh app ka main dashboard hai jahan se sab features open hote hain
 class HomeScreen extends StatefulWidget {
   final String role, uid;
   const HomeScreen({super.key, required this.role, required this.uid});
@@ -29,15 +30,18 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Timer? _locationTimer;
+  Timer? _locationTimer; // Location bhejne ke liye timer
   final _locService = LocationService();
   final _fsService = FirestoreService();
   String? _userName;
   String _trackingStatus = 'Initializing...';
   DateTime? _lastAlertTime;
-  StreamSubscription? _alertSub;
+  StreamSubscription? _alertSub; // Database se alerts sunne ke liye
+  
+  // Native Android se events (e.g. power button dabana) sunne ke liye
   static const _platform = MethodChannel('com.childguard.childguard/sms');
   static const _eventChannel = EventChannel('com.childguard.childguard/power_button');
+  
   final _notifications = FlutterLocalNotificationsPlugin();
   StreamSubscription? _nativeSub;
   bool _isLoading = true;
@@ -53,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkInitialAlert();
   }
 
+  // Background se aane wale hardware button events (volume/power) ko sunna
   void _listenToNativeEvents() {
     _nativeSub = _eventChannel.receiveBroadcastStream().listen((event) {
       if (event is String && event.startsWith('DANGER|')) {
@@ -60,12 +65,13 @@ class _HomeScreenState extends State<HomeScreen> {
         if (parts.length >= 3) {
           final type = parts[1];
           final message = parts[2];
-          _showEmergencyDialog(message, type);
+          _showEmergencyDialog(message, type); // Emergency screen kholo
         }
       }
     });
   }
 
+  // App khulte hi check karo ke koi purana alert toh nahi aya tha jab app band thi
   void _checkInitialAlert() async {
     try {
       final Map? alert = await _platform.invokeMethod('getInitialAlert');
@@ -79,23 +85,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Notifications bhejne ke liye permissions aur settings
   void _initNotifications() async {
     const AndroidInitializationSettings android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings settings = InitializationSettings(android: android);
     await _notifications.initialize(settings: settings);
     
+    // Parent ko sirf notifications ki permission chahiye
     if (widget.role == 'parent') {
       await Permission.notification.request();
-      await Permission.systemAlertWindow.request();
-    } else if (widget.role == 'child') {
+      await Permission.systemAlertWindow.request(); // Danger screen pop up ke liye
+    } 
+    // Child ko location ki permissions chahiye
+    else if (widget.role == 'child') {
       await Permission.notification.request();
       var status = await Permission.location.request();
       if (status.isGranted) {
-        await Permission.locationAlways.request();
+        await Permission.locationAlways.request(); // Background me location ke liye
       }
     }
   }
 
+  // User ka data database se mangwana
   void _loadProfile() async {
     final data = await _fsService.getUser(widget.uid);
     if (mounted && data != null) {
@@ -111,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await prefs.setString('parentId', data['connectedTo']);
       }
       
+      // Native Android service start karna takay app background me bhi chale
       try {
         await _platform.invokeMethod('startService');
       } catch (e) {
@@ -118,10 +130,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (widget.role == 'parent') {
-        _startAlertListener();
+        _startAlertListener(); // Parent alerts ka intezar karega
       }
 
       if (widget.role == 'child') {
+        // Child ke phone me Workmanager se background task set karna (har 15 minute)
         Workmanager().registerPeriodicTask(
           "1", 
           "geofenceCheck",
@@ -132,11 +145,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Live location track karna shuru karo (har 30 sec baad)
   void _startTracking() {
     _sendLocation();
     _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _sendLocation());
   }
 
+  // Location database mein bhejna
   void _sendLocation() async {
     final ok = await _locService.handlePermission();
     if (!ok) {
@@ -147,19 +162,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final pos = await _locService.getCurrentLocation();
     if (pos != null) {
       await _fsService.updateLocation(widget.uid, pos.latitude, pos.longitude);
-      _checkBoundary(pos.latitude, pos.longitude);
+      _checkBoundary(pos.latitude, pos.longitude); // Check karo ke bacha safe zone mein hai ya nahi
       if (mounted) setState(() => _trackingStatus = 'Active');
     } else {
       if (mounted) setState(() => _trackingStatus = 'GPS Error');
     }
   }
 
+  // Parent ke phone me alerts listen karna (jaise hi child panic dabaye)
   void _startAlertListener() {
     _alertSub = _fsService.getAlerts(widget.uid).listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
         final lastAlert = snapshot.docs.first.data() as Map<String, dynamic>;
         final timestamp = lastAlert['timestamp'] as Timestamp?;
         
+        // Agar alert pichle 1 minute me aya hai toh screen par dikhao
         if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
           _showEmergencyDialog(lastAlert['message'], lastAlert['type']);
         }
@@ -170,6 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isShowingDanger = false;
   DateTime? _lastDangerTime;
 
+  // Danger/Emergency screen kholna aur Notification bhejna
   void _showEmergencyDialog(String message, String type) async {
     if (!mounted || _isShowingDanger) return;
     
@@ -178,12 +196,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _isShowingDanger = true;
     
+    // High priority notification settings
     final androidDetails = AndroidNotificationDetails(
       'EmergencyAlertChannel', 
       '🚨 EMERGENCY ALERTS',
       importance: Importance.max,
       priority: Priority.high,
-      fullScreenIntent: true,
+      fullScreenIntent: true, // Screen khud on ho jayegi
       ongoing: true,
       styleInformation: BigTextStyleInformation(message),
       color: type == 'panic' ? Colors.red : Colors.orange,
@@ -196,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
       notificationDetails: NotificationDetails(android: androidDetails),
     );
 
+    // App ko background se samne lana (Android native code call)
     try {
       await _platform.invokeMethod('bringToForeground');
     } catch (e) {
@@ -206,9 +226,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _isShowingDanger = false;
   }
 
+  // Check karna ke bacha safe zone ke andar hai ya bahar nikal gaya hai
   Future<void> _checkBoundary(double lat, double lng) async {
-    if (widget.role == 'parent') return;
+    if (widget.role == 'parent') return; // Parent ka check nahi karna
     
+    // Har 5 min me ek hi baar alert bhejo
     if (_lastAlertTime != null && DateTime.now().difference(_lastAlertTime!).inMinutes < 5) {
       return;
     }
@@ -225,13 +247,14 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final zone in zones) {
       final isInside = _locService.isWithinBoundary(lat, lng, zone['lat'], zone['lng'], zone['radius']);
       if (isInside) {
-        isInsideAny = true;
+        isInsideAny = true; // Bacha safe zone ke andar hai
         break;
       }
       final dist = _locService.getDistance(zone['lat'], zone['lng'], lat, lng);
       if (dist < minDistance) minDistance = dist;
     }
     
+    // Agar bahar nikal aya hai toh parent ko alert bhej do
     if (!isInsideAny) {
       await _fsService.sendAlert('boundary', widget.uid, user['connectedTo'],
           'Child is outside all safe zones! Closest zone distance: ${minDistance.toStringAsFixed(0)}m');
@@ -247,6 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose(); 
   }
 
+  // App se bahar nikalna (Logout)
   void _logout() {
     showDialog(
       context: context,
@@ -269,14 +293,15 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(ctx);
               setState(() => _isLoggingOut = true);
               
-              // Simulated delay for premium animation feel
+              // Thora wait karo animation ke liye
               await Future.delayed(const Duration(milliseconds: 1500));
               await AuthService().logout();
               
               final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); // Clear UID/Role on logout
+              await prefs.clear(); // Phone se local memory saaf kardo
               
               if (mounted) {
+                // Login screen par wapas le jao
                 Navigator.pushReplacement(
                   context, 
                   PageRouteBuilder(
@@ -296,6 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Apne partner (husband/wife) ko app mein shamil karna
   void _linkCoParent() {
     final codeCtrl = TextEditingController();
     showDialog(
@@ -339,6 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Doosri screen par jane ka short function
   void _navigate(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
 
   @override
@@ -369,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
             ),
             child: IconButton(
-              onPressed: _logout,
+              onPressed: _logout, // Logout ka icon
               icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
             ),
           ),
@@ -380,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // User Profile Card
+            // User ka apna profile card
             _buildProfileCard(isParent, colorScheme).animate().fadeIn(duration: 600.ms).slideY(begin: 0.1, end: 0),
             
             const SizedBox(height: 30),
@@ -396,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
             
             const SizedBox(height: 16),
             
-            // Grid of menu items
+            // Buttons ka grid
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -417,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Icons.map_rounded, 
                   'Live Map', 
                   'Real-time', 
-                  const Color(0xFF10B981),
+                  const Color(0xFF10B981), // Sabz (Green) color
                   () => _navigate(MapScreen(uid: widget.uid, role: widget.role)),
                 ).animate(delay: 300.ms).fadeIn().scale(),
                 
@@ -447,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ).animate(delay: 600.ms).fadeIn().scale()
                  .shimmer(delay: 3000.ms, duration: 2000.ms),
 
+                // Agar child hai toh Panic button dikhao
                 if (!isParent)
                   _buildMenuCard(
                     Icons.warning_rounded, 
@@ -466,6 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Profile card ka design
   Widget _buildProfileCard(bool isParent, ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -509,6 +538,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1),
                 ),
                 const SizedBox(height: 8),
+                // Child ke liye GPS status dikhao
                 if (!isParent)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -528,6 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
+                // Parent ke liye Co-parent (partner) link karne ka button
                 if (isParent)
                   StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
@@ -565,6 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Dashboard ke box (card) ka design
   Widget _buildMenuCard(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -584,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(24),
           child: Stack(
             children: [
-              // Subtle background decoration
+              // Subtle background decoration (pichay jo gol design hai)
               Positioned(
                 right: -20,
                 top: -20,

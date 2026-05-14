@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 
+// Yeh screen tab show hoti hai jab emergency (panic ya boundary) alert aata hai
 class DangerScreen extends StatefulWidget {
   final String message;
   final String type; // 'panic' or 'boundary'
@@ -13,23 +14,25 @@ class DangerScreen extends StatefulWidget {
 }
 
 class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late AnimationController _controller; // Icon ko bara chota karne wali animation ka controller
   late Animation<double> _scaleAnimation;
-  Timer? _vibrationTimer;
+  Timer? _vibrationTimer; // Phone ko vibrate karwane ke liye timer
 
   @override
   void initState() {
     super.initState();
+    // Animation controller banaya jo 0.5 sec mein complete hoga aur repeat hoga
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     )..repeat(reverse: true);
 
+    // Icon ko apni size se 1.2x bara karna ka setup
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
     
-    // Start continuous vibration for panic alerts
+    // Agar alert panic (emergency) hai toh continuously vibrate shuru kar do
     if (widget.type == 'panic') {
       _vibrationTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
         HapticFeedback.vibrate();
@@ -37,6 +40,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
     }
   }
 
+  // Screen band hone par animation aur vibration ko rokna
   @override
   void dispose() {
     _controller.dispose();
@@ -47,12 +51,14 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final isPanic = widget.type == 'panic';
+    // Agar panic hai toh lal rang, warna boundary alert ke liye orange
     final bgColor = isPanic ? Colors.red : Colors.orange;
 
     return Scaffold(
       backgroundColor: bgColor,
       body: Container(
         width: double.infinity,
+        // Background mein ek light sa gradient (shadow effect) dalna
         decoration: BoxDecoration(
           gradient: RadialGradient(
             colors: [
@@ -65,6 +71,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Warning ka icon jo dhak dhak (scale) karega
             ScaleTransition(
               scale: _scaleAnimation,
               child: Icon(
@@ -74,6 +81,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               ),
             ),
             const SizedBox(height: 40),
+            // Bada sa title
             Text(
               isPanic ? 'DANGER: PANIC ALERT' : 'WARNING: BOUNDARY BREACH',
               style: const TextStyle(
@@ -85,6 +93,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
+            // Jo message backend se aya hai wo dikhao
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(
@@ -98,6 +107,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               ),
             ),
             const SizedBox(height: 60),
+            // Parent ke respond karne ka button
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
@@ -113,6 +123,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               ),
             ),
             const SizedBox(height: 20),
+            // Hidayat
             const Text(
               'KEEP APP OPEN UNTIL CHILD IS SAFE',
               style: TextStyle(color: Colors.white70, fontSize: 12),

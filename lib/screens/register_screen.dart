@@ -6,6 +6,7 @@ import '../services/firestore_service.dart';
 import '../widgets/loading_widget.dart';
 import 'home_screen.dart';
 
+// Yeh screen naya account banane ke liye hai
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override
@@ -13,34 +14,42 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameC = TextEditingController();
-  final _emailC = TextEditingController();
-  final _passC = TextEditingController();
-  final _confirmPassC = TextEditingController();
+  final _nameC = TextEditingController(); // Naam likhne ka dabba
+  final _emailC = TextEditingController(); // Email likhne ka dabba
+  final _passC = TextEditingController(); // Password likhne ka dabba
+  final _confirmPassC = TextEditingController(); // Dobara password likhne ka dabba (confirm karne ke liye)
   final _auth = AuthService();
-  String _role = 'parent';
+  String _role = 'parent'; // Shuru mein by default 'parent' set hoga
   bool _loading = false;
-  bool _obscurePassword = true;
+  bool _obscurePassword = true; // Password chupana
   bool _obscureConfirm = true;
 
+  // Account banane wala function
   void _register() async {
+    // Agar koi box khali hai toh rok do
     if (_nameC.text.isEmpty || _emailC.text.isEmpty || _passC.text.isEmpty || _confirmPassC.text.isEmpty) {
       _showError('Please fill in all fields');
       return;
     }
+    // Check karo ke dono passwords aapas mein milte hain ya nahi
     if (_passC.text != _confirmPassC.text) {
       _showError('Passwords do not match');
       return;
     }
+    // Password kam az kam 6 lafzon ka hona chahiye
     if (_passC.text.length < 6) {
       _showError('Password must be at least 6 characters');
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() => _loading = true); // Spinner chalao
     try {
+      // 1. Firebase Authentication mein user banao
       final cred = await _auth.register(_emailC.text.trim(), _passC.text.trim());
+      // 2. Firebase Database mein user ki mazeed maloomat (role, name) save karo
       await FirestoreService().createUser(cred.user!.uid, _emailC.text.trim(), _role, _nameC.text.trim());
+      
+      // Sab ho gaya toh Home Screen par le jao
       if (mounted) {
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => HomeScreen(role: _role, uid: cred.user!.uid)));
@@ -48,11 +57,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        _showError(_getFriendlyError(e.toString()));
+        _showError(_getFriendlyError(e.toString())); // Error message dikhao
       }
     }
   }
 
+  // Ajeeb ghareeb Firebase errors ko asan zaban mein dikhana
   String _getFriendlyError(String error) {
     if (error.contains('email-already-in-use')) {
       return 'This email is already registered. Try logging in.';
@@ -64,6 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return 'Registration failed. Please try again.';
   }
 
+  // Lal rang ka error message
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -88,7 +99,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // Peechay jane ka button
         ),
         title: const Text(
           'Create Account',
@@ -101,6 +112,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
+            // Khush Amdeed wali text
             Text(
               'Join ChildGuard',
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(
@@ -119,12 +131,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.1, end: 0),
             const SizedBox(height: 40),
             
-            // Name Field
+            // Name Field (Naam)
             _buildFieldLabel('Full Name').animate().fadeIn(delay: 300.ms),
             const SizedBox(height: 10),
             TextField(
               controller: _nameC,
-              textCapitalization: TextCapitalization.words,
+              textCapitalization: TextCapitalization.words, // Har lafz ka pehla harf bada hoga
               decoration: const InputDecoration(
                 hintText: 'John Doe',
                 prefixIcon: Icon(Icons.person_outline),
@@ -133,7 +145,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             
             const SizedBox(height: 20),
             
-            // Email Field
+            // Email Field (Email)
             _buildFieldLabel('Email Address').animate().fadeIn(delay: 400.ms),
             const SizedBox(height: 10),
             TextField(
@@ -147,17 +159,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
             
             const SizedBox(height: 20),
             
-            // Password Field
+            // Password Field (Password)
             _buildFieldLabel('Password').animate().fadeIn(delay: 500.ms),
             const SizedBox(height: 10),
             TextField(
               controller: _passC, 
-              obscureText: _obscurePassword, 
+              obscureText: _obscurePassword, // Password chupana
               decoration: InputDecoration(
                 hintText: '••••••••',
                 prefixIcon: const Icon(Icons.lock_outlined),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                  icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility), // Aankh wala icon
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),
@@ -165,7 +177,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             
             const SizedBox(height: 20),
             
-            // Confirm Password
+            // Confirm Password (Dobara password)
             _buildFieldLabel('Confirm Password').animate().fadeIn(delay: 600.ms),
             const SizedBox(height: 10),
             TextField(
@@ -183,13 +195,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             
             const SizedBox(height: 30),
             
-            // Role selection
+            // Role selection (Bacha ya Parent?)
             _buildFieldLabel('Select your role').animate().fadeIn(delay: 700.ms),
             const SizedBox(height: 16),
             Row(
               children: [
+                // Parent wala daba
                 Expanded(child: _roleChip('parent', Icons.person_rounded, 'Parent')),
                 const SizedBox(width: 16),
+                // Child wala daba
                 Expanded(child: _roleChip('child', Icons.child_care_rounded, 'Child')),
               ],
             ).animate().fadeIn(delay: 700.ms).slideY(begin: 0.1, end: 0),
@@ -214,6 +228,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // Heading bananay ka asan tareeka
   Widget _buildFieldLabel(String label) {
     return Text(
       label,
@@ -221,12 +236,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // Role select karne wale box ka design
   Widget _roleChip(String value, IconData icon, String label) {
-    final selected = _role == value;
+    final selected = _role == value; // Agar select hua wa hai toh true
     final color = selected ? Theme.of(context).colorScheme.primary : Colors.grey[400]!;
     
     return GestureDetector(
-      onTap: () => setState(() => _role = value),
+      onTap: () => setState(() => _role = value), // Click par role change karo
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -235,8 +251,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? color : Colors.grey[200]!,
-            width: selected ? 2 : 1,
+            width: selected ? 2 : 1, // Select hone par border mota ho jayega
           ),
+          // Select hone par halka sa saya (shadow) ayega
           boxShadow: selected ? [
             BoxShadow(
               color: color.withOpacity(0.1),

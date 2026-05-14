@@ -1,3 +1,4 @@
+// contacts_screen.dart - Emergency SOS contacts
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/firestore_service.dart';
 import '../widgets/loading_widget.dart';
 
+// Yeh screen SOS emergency contacts (numbers) ko manage karti hai
 class ContactsScreen extends StatefulWidget {
   final String uid, role;
   const ContactsScreen({super.key, required this.uid, required this.role});
@@ -18,20 +20,22 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   final _fs = FirestoreService();
-  bool _loading = true;
-  List<Map<String, dynamic>> _contacts = [];
+  bool _loading = true; // Data load hone ka status
+  List<Map<String, dynamic>> _contacts = []; // Contacts ki list store karne ke liye
   String? _parentUid;
 
   @override
   void initState() {
     super.initState();
-    _loadContacts();
+    _loadContacts(); // Screen khulte hi contacts fetch karo
   }
 
+  // Database se emergency contacts laane ka function
   void _loadContacts() async {
     setState(() => _loading = true);
     String targetUid = widget.uid;
     
+    // Agar child login hai toh uske parent ka ID nikalo kyunke contacts parent add karta hai
     if (widget.role == 'child') {
       final user = await _fs.getUser(widget.uid);
       if (user != null && user['connectedTo'] != null) {
@@ -39,9 +43,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _parentUid = targetUid;
       }
     } else {
-      _parentUid = widget.uid;
+      _parentUid = widget.uid; // Agar parent khud hai toh uska apna ID
     }
 
+    // Contacts database se la kar list mein save karo
     final contacts = await _fs.getEmergencyContacts(targetUid);
     if (mounted) {
       setState(() {
@@ -51,10 +56,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  // Naya SOS contact add karne ka dialog
   void _addContact() {
     final nameCtrl = TextEditingController();
     String fullPhone = '';
-    String countryCode = 'PK';
+    String countryCode = 'PK'; // Default country code Pakistan
 
     showDialog(
       context: context,
@@ -66,6 +72,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Name likhne ka input field
                 TextField(
                   controller: nameCtrl, 
                   decoration: const InputDecoration(
@@ -74,13 +81,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Phone number likhne ka field with country code
                 IntlPhoneField(
                   decoration: const InputDecoration(
                     labelText: 'Phone Number',
                   ),
                   initialCountryCode: countryCode,
                   onChanged: (phone) {
-                    fullPhone = phone.completeNumber;
+                    fullPhone = phone.completeNumber; // Mukammal number country code ke sath
                     countryCode = phone.countryISOCode;
                   },
                 ),
@@ -88,17 +96,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), // Cancel button
             ElevatedButton(
               onPressed: () async {
                 final name = nameCtrl.text.trim();
+                // Agar name aur phone khali na ho toh database mein save karo
                 if (name.isNotEmpty && fullPhone.isNotEmpty) {
                   await _fs.addEmergencyContact(_parentUid!, name, fullPhone, countryCode);
                   Navigator.pop(ctx);
-                  _loadContacts();
+                  _loadContacts(); // Save karne ke baad list ko refresh karo
                 }
               },
-              child: const Text('Add to SOS'),
+              child: const Text('Add to SOS'), // Save button
             ),
           ],
         ),
@@ -106,15 +115,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  // Contact delete (remove) karne ka function
   void _deleteContact(Map<String, dynamic> contact) async {
     await _fs.removeEmergencyContact(_parentUid!, contact);
-    _loadContacts();
+    _loadContacts(); // Delete ke baad list refresh
   }
 
+  // Phone app open kar ke direct call lagane ka function
   Future<void> _makeCall(String phone) async {
     final Uri url = Uri.parse('tel:$phone');
     if (await canLaunchUrl(url)) {
-      await launchUrl(url);
+      await launchUrl(url); // Call mila do
     }
   }
 
@@ -137,9 +148,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
           IconButton(onPressed: _loadContacts, icon: const Icon(Icons.refresh_rounded, color: Colors.black)),
         ],
       ),
+      // Agar load ho raha hai toh loader dikhao
       body: _loading 
         ? const LoadingWidget(message: 'Syncing contacts...')
-        : _contacts.isEmpty 
+        : _contacts.isEmpty // Agar koi contact nahi hai toh empty screen dikhao
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -147,6 +159,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   const Icon(Icons.contact_phone_outlined, size: 80, color: Colors.grey),
                   const SizedBox(height: 20),
                   const Text('No SOS contacts yet.', style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.w500)),
+                  // Agar parent hai toh 'Add Contact' ka button dikhao
                   if (isParent) ...[
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
@@ -158,6 +171,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ],
               ),
             )
+          // Agar contacts majood hain toh list dikhao
           : ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: _contacts.length,
@@ -169,6 +183,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     .slideY(begin: 0.1, end: 0);
               },
             ),
+      // Neeche corner mein Add ka button (sirf parent ke liye)
       floatingActionButton: isParent ? FloatingActionButton.extended(
         onPressed: _addContact,
         label: const Text('New SOS Contact'),
@@ -178,6 +193,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  // Individual contact card ka UI banata hai
   Widget _buildContactCard(Map<String, dynamic> contact, bool isParent, ColorScheme colorScheme) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -189,6 +205,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
       child: Row(
         children: [
+          // Naam ka pehla lafz golai mein dikhane ke liye
           CircleAvatar(
             radius: 25,
             backgroundColor: colorScheme.primary.withOpacity(0.1),
@@ -198,6 +215,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
           ),
           const SizedBox(width: 16),
+          // Naam aur number dikhana
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,6 +226,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ],
             ),
           ),
+          // Call button
           IconButton(
             onPressed: () => _makeCall(contact['phone']),
             icon: Container(
@@ -216,6 +235,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               child: const Icon(Icons.call_rounded, color: Colors.green, size: 20),
             ),
           ),
+          // Delete button (sirf parent ke liye)
           if (isParent)
             IconButton(
               onPressed: () => _deleteContact(contact),

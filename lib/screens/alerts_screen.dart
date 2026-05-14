@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../services/firestore_service.dart';
 import '../widgets/loading_widget.dart';
 
+// Yeh screen user (Parent ya Child) ko unki notifications ya alerts dikhati hai
 class AlertsScreen extends StatelessWidget {
   final String uid, role;
   const AlertsScreen({super.key, required this.uid, required this.role});
@@ -12,24 +13,29 @@ class AlertsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fs = FirestoreService();
+    // Agar parent hai toh uske connected child ke alerts aayenge, warna child ke apne alerts
     final stream = role == 'parent' ? fs.getAlerts(uid) : fs.getChildAlerts(uid);
     
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
+        elevation: 0, // Appbar ki shadow khatam kar di
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          // Back button dabane par pichli screen par le jayega
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Activity Logs', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
       ),
+      // Firestore se real-time alerts fetch karne ke liye StreamBuilder
       body: StreamBuilder<QuerySnapshot>(
         stream: stream,
         builder: (context, snap) {
+          // Jab tak data load ho raha hai, LoadingWidget dikhao
           if (snap.connectionState == ConnectionState.waiting) return const LoadingWidget(message: 'Syncing logs...');
           
+          // Agar database se data laane mein koi error aati hai
           if (snap.hasError) {
             return Center(
               child: Padding(
@@ -48,6 +54,7 @@ class AlertsScreen extends StatelessWidget {
             );
           }
 
+          // Agar koi alerts mojud nahi hain toh empty state show karo
           if (!snap.hasData || snap.data!.docs.isEmpty) {
             return Center(
               child: Column(
@@ -64,6 +71,7 @@ class AlertsScreen extends StatelessWidget {
           }
 
           final docs = snap.data!.docs;
+          // Alerts ko naye se purane time (descending order) ke hisaab se sort karna
           docs.sort((a, b) {
             final tsA = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
             final tsB = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
@@ -71,15 +79,17 @@ class AlertsScreen extends StatelessWidget {
             return tsB.compareTo(tsA);
           });
 
+          // Alerts ki list dikhane ke liye ListView
           return ListView.builder(
             padding: const EdgeInsets.all(20),
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final a = docs[i].data() as Map<String, dynamic>;
-              final isPanic = a['type'] == 'panic';
+              final isPanic = a['type'] == 'panic'; // Check karna ke yeh panic alert hai ya boundary alert
               final ts = a['timestamp'] as Timestamp?;
               final time = ts != null ? _formatTime(ts.toDate()) : 'Recent';
               
+              // Alert card build karo aur animations apply karo
               return _buildAlertCard(a, isPanic, time)
                   .animate(delay: (i * 50).ms)
                   .fadeIn()
@@ -91,15 +101,17 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
+  // Time ko parhne layak banata hai (e.g., 'Just now', '15m ago')
   String _formatTime(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inHours < 1) return '${diff.inMinutes}m ago';
     if (diff.inDays < 1) return '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    return '${date.day}/${date.month}';
+    return '${date.day}/${date.month}'; // Agar 1 din se zyada ho gaya toh date/month dikhao
   }
 
+  // Yeh ek individual alert card ka UI banata hai
   Widget _buildAlertCard(Map<String, dynamic> a, bool isPanic, String time) {
     final color = isPanic ? Colors.redAccent : Colors.orangeAccent;
     return Container(
@@ -107,7 +119,7 @@ class AlertsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)], // Halki shadow effect
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -132,4 +144,3 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 }
-

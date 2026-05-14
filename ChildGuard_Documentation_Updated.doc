@@ -1,0 +1,317 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>ChildGuard Project Documentation</title>
+<style>
+  body {
+    font-family: 'Calibri', 'Arial', sans-serif;
+    line-height: 1.6;
+    color: #000000;
+  }
+  h1 {
+    font-size: 32pt;
+    text-align: center;
+    color: #1F4E79;
+    margin-top: 50pt;
+  }
+  h2 {
+    font-size: 20pt;
+    color: #2F5597;
+    border-bottom: 1px solid #8FAADC;
+    padding-bottom: 5px;
+    margin-top: 30pt;
+  }
+  h3 {
+    font-size: 16pt;
+    color: #4472C4;
+    margin-top: 20pt;
+  }
+  p {
+    font-size: 12pt;
+    margin-bottom: 10pt;
+    text-align: justify;
+  }
+  ul, ol {
+    font-size: 12pt;
+    margin-bottom: 10pt;
+  }
+  .code-block {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: #F8F9FA;
+    border: 1px solid #E9ECEF;
+    padding: 10pt;
+    font-size: 10pt;
+    margin: 10pt 0;
+    color: #212529;
+  }
+  .roman-urdu-note {
+    color: #856404;
+    background-color: #FFF3CD;
+    border: 1px solid #FFEEBA;
+    padding: 5pt;
+    font-size: 10pt;
+    font-style: italic;
+    margin-bottom: 10pt;
+  }
+  .cover-subtitle {
+    text-align: center;
+    font-size: 18pt;
+    color: #595959;
+    margin-bottom: 100pt;
+  }
+  .screenshot-placeholder {
+    border: 2pt dashed #A6A6A6;
+    background-color: #F2F2F2;
+    color: #7F7F7F;
+    text-align: center;
+    padding: 80pt 20pt;
+    margin: 20pt 0;
+    font-size: 14pt;
+    font-weight: bold;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15pt;
+    margin-bottom: 15pt;
+  }
+  th, td {
+    border: 1px solid #000000;
+    padding: 8pt;
+    font-size: 12pt;
+  }
+  th {
+    background-color: #D9E1F2;
+    color: #000000;
+  }
+</style>
+</head>
+<body>
+
+  <!-- COVER PAGE -->
+  <h1>ChildGuard: Real-Time Safety & Monitoring System</h1>
+  <div class="cover-subtitle">Final Project Documentation for University Submission</div>
+  
+  <p style="text-align: center; margin-top: 80pt; font-size: 14pt;">
+    <strong>Developed By:</strong><br><br>
+    [Your Name / Group Members]<br>
+    [Registration Numbers]<br>
+    [Department Name]<br>
+    [Your University Name]<br>
+    [Academic Year / Semester]
+  </p>
+
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: App Logo / Splash Screen ]
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ABSTRACT -->
+  <h2>Abstract</h2>
+  <p>In the modern era, personal safety is a paramount concern, especially for children who are increasingly mobile and independent. ChildGuard is an innovative mobile application designed to provide parents with a robust, real-time safety net. By leveraging Flutter's cross-platform capabilities and Firebase's real-time synchronization, the app offers features like live GPS tracking, geofencing (Safe Zones), and a unique hardware-triggered SOS mechanism. A key highlight of this project is the integration of Roman Urdu documentation within the source code, making it an accessible educational resource for students in local regions. This document outlines the methodology, architecture, and technical implementation of ChildGuard.</p>
+
+  <div class="page-break"></div>
+
+  <!-- TABLE OF CONTENTS -->
+  <h2>Table of Contents</h2>
+  <ul>
+    <li>1. Introduction</li>
+    <li>2. Project Requirements
+      <ul>
+        <li>2.1 Hardware Requirements</li>
+        <li>2.2 Software Requirements</li>
+      </ul>
+    </li>
+    <li>3. Development Methodology (SDLC)</li>
+    <li>4. System Architecture & Design</li>
+    <li>5. Core Features & Modules
+      <ul>
+        <li>5.1 Authentication & Role-Based Access</li>
+        <li>5.2 Live Tracking & Map Integration</li>
+        <li>5.3 Safe Zone Management</li>
+        <li>5.4 Emergency Panic Response</li>
+      </ul>
+    </li>
+    <li>6. Technical Implementation & Code Snippets</li>
+    <li>7. Database Schema</li>
+    <li>8. System Diagrams
+      <ul>
+        <li>8.1 Use Case Diagram</li>
+        <li>8.2 App Logic Flowchart</li>
+      </ul>
+    </li>
+    <li>9. Conclusion</li>
+  </ul>
+
+  <div class="page-break"></div>
+
+  <!-- 1. INTRODUCTION -->
+  <h2>1. Introduction</h2>
+  <p>The <strong>ChildGuard</strong> application is designed as a proactive safety tool. Unlike passive tracking apps, ChildGuard focuses on active emergency response. The project aims to solve the critical problem of delayed response during child-related emergencies by automating location sharing and alert dispatching.</p>
+
+  <!-- 2. PROJECT REQUIREMENTS -->
+  <h2>2. Project Requirements</h2>
+  
+  <h3>2.1 Hardware Requirements</h3>
+  <ul>
+    <li><strong>Processor:</strong> Octa-core 2.0 GHz or higher (Smartphone).</li>
+    <li><strong>RAM:</strong> 4GB or higher recommended.</li>
+    <li><strong>Storage:</strong> 100MB free space for installation.</li>
+    <li><strong>Sensors:</strong> GPS Module (Mandatory), Internet Connectivity (4G/5G/Wi-Fi).</li>
+  </ul>
+
+  <h3>2.2 Software Requirements</h3>
+  <ul>
+    <li><strong>Operating System:</strong> Android 7.0 (Nougat) or higher.</li>
+    <li><strong>Development Environment:</strong> Flutter SDK, Dart, Android Studio / VS Code.</li>
+    <li><strong>Cloud Services:</strong> Firebase (Auth, Firestore).</li>
+  </ul>
+
+  <div class="page-break"></div>
+
+  <!-- 3. DEVELOPMENT METHODOLOGY -->
+  <h2>3. Development Methodology</h2>
+  <p>This project followed the <strong>Agile Development Methodology</strong>. This allowed for iterative development, frequent testing, and the ability to refine features based on testing feedback. The process involved:</p>
+  <ol>
+    <li><strong>Requirement Analysis:</strong> Identifying core safety needs.</li>
+    <li><strong>UI/UX Design:</strong> Creating a premium, high-contrast interface for emergency use.</li>
+    <li><strong>Implementation:</strong> Coding the logic and integrating native Android modules.</li>
+    <li><strong>Integration:</strong> Connecting the frontend with Firebase real-time database.</li>
+    <li><strong>Testing:</strong> Simulating boundary breaches and panic triggers.</li>
+  </ol>
+
+  <!-- 4. SYSTEM ARCHITECTURE -->
+  <h2>4. System Architecture</h2>
+  <p>ChildGuard utilizes a serverless architecture where the mobile application communicates directly with Firebase services. Native Android features are accessed via specialized channels to ensure the app remains reliable even in the background.</p>
+
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: System Architecture Diagram ]
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- 5. CORE FEATURES & MODULES -->
+  <h2>5. Core Features & Modules</h2>
+
+  <h3>5.1 Authentication & Role-Based Access</h3>
+  <p>The app ensures security through role isolation. Parents generate a <strong>Connection Code</strong> which acts as a secure handshake for linking children's devices.</p>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: Registration & Role Selection Screens ]
+  </div>
+
+  <h3>5.2 Live Tracking & Map Integration</h3>
+  <p>Using `flutter_map` and live Firestore streams, the parent can monitor multiple children on a single interface. Distance calculations are performed locally to provide real-time proximity alerts.</p>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: Live Map Tracking View ]
+  </div>
+
+  <h3>5.3 Safe Zone Management</h3>
+  <p>Parents can set up multiple circular geofences. If a child leaves the collective area of all safe zones, the system marks them as "At Risk" and notifies the parent.</p>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: Safe Zones List & Setup Screen ]
+  </div>
+
+  <h3>5.4 Emergency Panic Response</h3>
+  <p>The Panic system is multi-layered. It utilizes native SMS capabilities to ensure alerts reach contacts even without a stable internet connection, while Firestore notifies the parent app immediately.</p>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: Panic Screen & SOS Alert Confirmation ]
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- 6. TECHNICAL IMPLEMENTATION -->
+  <h2>6. Technical Implementation</h2>
+  <p>Below are key logic snippets from the project, highlighting how real-time synchronization and native features are handled.</p>
+
+  <h3>6.1 Real-Time Alert Listening (Parent Side)</h3>
+  <div class="roman-urdu-note">
+    <strong>Note:</strong> Yeh code real-time mein alerts sunta hai aur emergency screen kholta hai.
+  </div>
+  <div class="code-block">
+    StreamBuilder&lt;QuerySnapshot&gt;(<br>
+    &nbsp;&nbsp;stream: _fs.getAlerts(widget.uid),<br>
+    &nbsp;&nbsp;builder: (context, snapshot) {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Emergency alert mila, Danger Screen dikhao!<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+    &nbsp;&nbsp;}<br>
+    )
+  </div>
+
+  <h3>6.2 Silent SMS Native Integration</h3>
+  <div class="roman-urdu-note">
+    <strong>Note:</strong> Yeh native Android API istemal karta hai silent SMS bhejne ke liye.
+  </div>
+  <div class="code-block">
+    static const platform = MethodChannel('com.childguard/sms');<br>
+    await platform.invokeMethod('sendSMS', {<br>
+    &nbsp;&nbsp;'phone': contactPhone,<br>
+    &nbsp;&nbsp;'message': 'EMERGENCY! I am at: $locationLink'<br>
+    });
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- 7. DATABASE SCHEMA -->
+  <h2>7. Database Schema</h2>
+  <table>
+    <tr>
+      <th>Collection</th>
+      <th>Key Data Fields</th>
+      <th>Purpose</th>
+    </tr>
+    <tr>
+      <td><code>users</code></td>
+      <td>uid, role, connectionCode, children[]</td>
+      <td>User profiles and links.</td>
+    </tr>
+    <tr>
+      <td><code>locations</code></td>
+      <td>latitude, longitude, timestamp</td>
+      <td>Real-time GPS tracking logs.</td>
+    </tr>
+    <tr>
+      <td><code>alerts</code></td>
+      <td>type (panic/boundary), message, senderId</td>
+      <td>Emergency logs and notifications.</td>
+    </tr>
+  </table>
+
+  <div class="screenshot-placeholder">
+    [ SPACE FOR SCREENSHOT: Firestore Database Structure Snapshot ]
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- 8. SYSTEM DIAGRAMS -->
+  <h2>8. System Diagrams</h2>
+  
+  <h3>8.1 Use Case Diagram</h3>
+  <p>The Use Case diagram illustrates the functional requirements of the system and the interactions between the primary actors (Parent and Child) and the backend system.</p>
+  <ul>
+    <li><strong>Parent Actor:</strong> Responsible for configuration, setting boundaries, managing emergency contacts, and monitoring the child's status.</li>
+    <li><strong>Child Actor:</strong> Responsible for maintaining active status, providing location data, and triggering manual SOS alerts.</li>
+    <li><strong>System Actor:</strong> Handles the automated logic of geofence calculation, silent SMS dispatching, and real-time data synchronization.</li>
+  </ul>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR DIAGRAM: Use Case Diagram ]
+  </div>
+
+  <h3>8.2 App Logic Flowchart</h3>
+  <p>The flowchart defines the sequential flow of the application from the initial launch to the specific operations performed by both Parent and Child roles. It highlights the decision points for role selection, connection establishment, and emergency triggering.</p>
+  <div class="screenshot-placeholder">
+    [ SPACE FOR DIAGRAM: Project Flowchart ]
+  </div>
+
+  <!-- 9. CONCLUSION -->
+  <h2>9. Conclusion</h2>
+  <p>The ChildGuard project successfully demonstrates the power of modern mobile frameworks in solving real-world safety challenges. By providing a seamless link between parents and children, the app reduces response times and enhances peace of mind. Future enhancements could include AI-based behavioral analysis and smart-watch integration for even faster SOS triggers.</p>
+
+</body>
+</html>
