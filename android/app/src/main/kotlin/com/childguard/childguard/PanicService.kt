@@ -80,9 +80,6 @@ class PanicService : Service() {
             
             alertListenerRegistration = Firebase.firestore.collection("alerts")
                 .whereEqualTo("parentId", uid)
-                .whereEqualTo("status", "active")
-                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .limit(1)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
                         Log.e(TAG, "Firestore listen failed: ${e.message}")
@@ -90,7 +87,16 @@ class PanicService : Service() {
                     }
 
                     if (snapshot != null && !snapshot.isEmpty) {
-                        val doc = snapshot.documents[0]
+                        // Filter active alerts and sort manually to avoid index issues
+                        val activeAlerts = snapshot.documents.filter { 
+                            it.getString("status") == "active"
+                        }.sortedByDescending { 
+                            it.getTimestamp("timestamp")?.seconds ?: 0L
+                        }
+
+                        if (activeAlerts.isEmpty()) return@addSnapshotListener
+
+                        val doc = activeAlerts[0]
                         val docId = doc.id
                         
                         // Prevent re-processing the same alert

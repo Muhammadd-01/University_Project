@@ -178,12 +178,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startAlertListener() {
     _alertSub = _fsService.getAlerts(widget.uid).listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
-        final lastAlert = snapshot.docs.first.data() as Map<String, dynamic>;
-        final timestamp = lastAlert['timestamp'] as Timestamp?;
-        
-        // Agar alert pichle 1 minute me aya hai toh screen par dikhao
-        if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
-          _showEmergencyDialog(lastAlert['message'], lastAlert['type'], snapshot.docs.first.id);
+        // Filter only active alerts and sort them by timestamp manually to avoid index errors
+        final activeAlerts = snapshot.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['status'] == 'active';
+        }).toList();
+
+        if (activeAlerts.isNotEmpty) {
+          activeAlerts.sort((a, b) {
+            final tsA = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final tsB = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (tsA == null || tsB == null) return 0;
+            return tsB.compareTo(tsA);
+          });
+
+          final lastAlertDoc = activeAlerts.first;
+          final lastAlert = lastAlertDoc.data() as Map<String, dynamic>;
+          final timestamp = lastAlert['timestamp'] as Timestamp?;
+          
+          // Agar alert pichle 1 minute me aya hai toh screen par dikhao
+          if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
+            _showEmergencyDialog(lastAlert['message'], lastAlert['type'], lastAlertDoc.id);
+          }
         }
       }
     });

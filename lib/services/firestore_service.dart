@@ -116,8 +116,6 @@ class FirestoreService {
   Stream<QuerySnapshot> getAlerts(String userId) {
     return _db.collection('alerts')
         .where('parentId', isEqualTo: userId)
-        .where('status', isEqualTo: 'active') // Only get active alerts
-        .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
