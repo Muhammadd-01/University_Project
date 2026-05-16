@@ -134,7 +134,7 @@ class MainActivity : FlutterActivity() {
             val type = intent.getStringExtra("alertType") ?: "panic"
             val message = intent.getStringExtra("alertMessage") ?: "Emergency detected!"
             val alertId = intent.getStringExtra("alertId")
-            initialAlert = mapOf("type" to type, "message" to message, "alertId" to alertId ?: "")
+            initialAlert = mapOf("type" to type, "message" to message, "alertId" to (alertId ?: ""))
             
             // Trigger Flutter event if listener is active
             eventSink?.success("DANGER|$type|$message|$alertId")

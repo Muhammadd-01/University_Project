@@ -136,9 +136,28 @@ class AlertsScreen extends StatelessWidget {
           a['message'] ?? 'Suspicious activity detected', 
           style: TextStyle(color: Colors.grey[600], fontSize: 13),
         ),
-        trailing: Text(
-          time, 
-          style: TextStyle(fontSize: 11, color: Colors.grey[400], fontWeight: FontWeight.bold),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              time, 
+              style: TextStyle(fontSize: 11, color: Colors.grey[400], fontWeight: FontWeight.bold),
+            ),
+            if (a['status'] == 'resolved')
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'RESPONDED',
+                  style: TextStyle(color: Colors.green, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+          ],
         ),
       ),
     );

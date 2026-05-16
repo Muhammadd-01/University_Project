@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'danger_screen.dart';
+import 'parent_responding_screen.dart';
 
 // Yeh app ka main dashboard hai jahan se sab features open hote hain
 class HomeScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _trackingStatus = 'Initializing...';
   DateTime? _lastAlertTime;
   StreamSubscription? _alertSub; // Database se alerts sunne ke liye
+  StreamSubscription? _childAlertSub; // Child ke liye alerts ki status sunne ke liye
   
   // Native Android se events (e.g. power button dabana) sunne ke liye
   static const _platform = MethodChannel('com.childguard.childguard/sms');
@@ -143,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
           frequency: const Duration(minutes: 15),
           constraints: Constraints(networkType: NetworkType.connected),
         );
+        _startChildAlertListener(); // Child apne bheje hue alerts ka status dekhega
       }
     }
   }
@@ -184,6 +187,37 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     });
+  }
+
+  final Set<String> _seenResolvedAlerts = {};
+
+  // Child ke phone me sunna ke parent ne respond kiya ya nahi
+  void _startChildAlertListener() {
+    _childAlertSub = _fsService.getChildAlerts(widget.uid).listen((snapshot) {
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final status = data['status'];
+        final alertId = doc.id;
+        
+        // Agar parent ne resolve (respond) kar diya hai aur humne pehle nahi dikhaya
+        if (status == 'resolved' && !_seenResolvedAlerts.contains(alertId)) {
+          _seenResolvedAlerts.add(alertId);
+          _showParentRespondingDialog();
+        }
+      }
+    });
+  }
+
+  bool _isShowingRespondingScreen = false;
+
+  void _showParentRespondingDialog() {
+    if (_isShowingRespondingScreen) return;
+    _isShowingRespondingScreen = true;
+    
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (_) => const ParentRespondingScreen())
+    ).then((_) => _isShowingRespondingScreen = false);
   }
 
   bool _isShowingDanger = false;
@@ -268,6 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() { 
     _locationTimer?.cancel(); 
     _alertSub?.cancel();
+    _childAlertSub?.cancel();
     _nativeSub?.cancel();
     super.dispose(); 
   }

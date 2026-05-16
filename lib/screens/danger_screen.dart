@@ -126,13 +126,35 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: bgColor,
-                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 elevation: 10,
               ),
               child: const Text(
                 'I AM RESPONDING',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                _vibrationTimer?.cancel();
+                _platform.invokeMethod('stopVibration');
+                if (widget.alertId != null) {
+                  FirestoreService().resolveAlert(widget.alertId!);
+                }
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withOpacity(0.9),
+                foregroundColor: Colors.blueAccent,
+                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                elevation: 5,
+              ),
+              child: const Text(
+                'I AM COMING',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 20),
