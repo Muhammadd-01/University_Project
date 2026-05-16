@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import '../services/firestore_service.dart';
+
 
 // Yeh screen tab show hoti hai jab emergency (panic ya boundary) alert aata hai
 class DangerScreen extends StatefulWidget {
   final String message;
   final String type; // 'panic' or 'boundary'
+  final String? alertId;
 
-  const DangerScreen({super.key, required this.message, required this.type});
+  const DangerScreen({super.key, required this.message, required this.type, this.alertId});
 
   @override
   State<DangerScreen> createState() => _DangerScreenState();
@@ -17,6 +20,8 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
   late AnimationController _controller; // Icon ko bara chota karne wali animation ka controller
   late Animation<double> _scaleAnimation;
   Timer? _vibrationTimer; // Phone ko vibrate karwane ke liye timer
+  static const _platform = MethodChannel('com.childguard.childguard/sms');
+
 
   @override
   void initState() {
@@ -45,6 +50,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
   void dispose() {
     _controller.dispose();
     _vibrationTimer?.cancel();
+    _platform.invokeMethod('stopVibration');
     super.dispose();
   }
 
@@ -109,7 +115,14 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
             const SizedBox(height: 60),
             // Parent ke respond karne ka button
             ElevatedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                _vibrationTimer?.cancel();
+                _platform.invokeMethod('stopVibration');
+                if (widget.alertId != null) {
+                  FirestoreService().resolveAlert(widget.alertId!);
+                }
+                Navigator.pop(context);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: bgColor,

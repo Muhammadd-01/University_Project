@@ -65,7 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (parts.length >= 3) {
           final type = parts[1];
           final message = parts[2];
-          _showEmergencyDialog(message, type); // Emergency screen kholo
+          final alertId = parts.length >= 4 ? parts[3] : null;
+          _showEmergencyDialog(message, type, alertId); // Emergency screen kholo
         }
       }
     });
@@ -78,7 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (alert != null) {
         final type = alert['type'] ?? 'panic';
         final message = alert['message'] ?? 'Emergency detected!';
-        _showEmergencyDialog(message, type);
+        final alertId = alert['alertId'];
+        _showEmergencyDialog(message, type, alertId);
       }
     } catch (e) {
       debugPrint('Error checking initial alert: $e');
@@ -178,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
         
         // Agar alert pichle 1 minute me aya hai toh screen par dikhao
         if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inMinutes < 1) {
-          _showEmergencyDialog(lastAlert['message'], lastAlert['type']);
+          _showEmergencyDialog(lastAlert['message'], lastAlert['type'], snapshot.docs.first.id);
         }
       }
     });
@@ -188,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _lastDangerTime;
 
   // Danger/Emergency screen kholna aur Notification bhejna
-  void _showEmergencyDialog(String message, String type) async {
+  void _showEmergencyDialog(String message, String type, String? alertId) async {
     if (!mounted || _isShowingDanger) return;
     
     if (_lastDangerTime != null && DateTime.now().difference(_lastDangerTime!).inSeconds < 10) return;
@@ -222,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('Bring to foreground error: $e');
     }
 
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => DangerScreen(message: message, type: type)));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => DangerScreen(message: message, type: type, alertId: alertId)));
     _isShowingDanger = false;
   }
 

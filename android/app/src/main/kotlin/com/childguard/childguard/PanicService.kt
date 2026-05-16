@@ -80,6 +80,7 @@ class PanicService : Service() {
             
             alertListenerRegistration = Firebase.firestore.collection("alerts")
                 .whereEqualTo("parentId", uid)
+                .whereEqualTo("status", "active")
                 .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .limit(1)
                 .addSnapshotListener { snapshot, e ->
@@ -105,11 +106,11 @@ class PanicService : Service() {
                             val type = alert["type"] as? String ?: "panic"
                             val message = alert["message"] as? String ?: "Emergency detected!"
                             Log.d(TAG, "New alert received: $type - $message")
-                            showHighPriorityNotification(type, message)
+                            showHighPriorityNotification(type, message, docId)
                             
                             // FORCE OPEN: If we have permission to draw over apps, launch MainActivity directly
                             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || android.provider.Settings.canDrawOverlays(this)) {
-                                launchMainActivity(type, message)
+                                launchMainActivity(type, message, docId)
                             }
                         }
                     }
@@ -224,19 +225,20 @@ class PanicService : Service() {
         notificationManager.notify(101, notification)
     }
 
-    private fun launchMainActivity(type: String, message: String) {
+    private fun launchMainActivity(type: String, message: String, alertId: String? = null) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("trigger", "DANGER")
             putExtra("alertType", type)
             putExtra("alertMessage", message)
+            putExtra("alertId", alertId)
         }
         startActivity(intent)
         Log.d(TAG, "Directly launched MainActivity due to emergency")
     }
 
     @Suppress("DEPRECATION")
-    private fun showHighPriorityNotification(type: String, message: String) {
+    private fun showHighPriorityNotification(type: String, message: String, alertId: String? = null) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val highChannelId = "EmergencyAlertChannel"
 
@@ -278,6 +280,7 @@ class PanicService : Service() {
             putExtra("trigger", "DANGER")
             putExtra("alertType", type)
             putExtra("alertMessage", message)
+            putExtra("alertId", alertId)
         }
 
         val pendingIntent = android.app.PendingIntent.getActivity(

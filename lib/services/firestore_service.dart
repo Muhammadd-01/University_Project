@@ -97,6 +97,7 @@ class FirestoreService {
     final alertData = {
       'type': type, 'senderId': senderId, 'parentId': parentId,
       'message': message, 'timestamp': FieldValue.serverTimestamp(),
+      'status': 'active', // Mark alert as active initially
     };
     
     // Alert bhej do
@@ -115,7 +116,14 @@ class FirestoreService {
   Stream<QuerySnapshot> getAlerts(String userId) {
     return _db.collection('alerts')
         .where('parentId', isEqualTo: userId)
+        .where('status', isEqualTo: 'active') // Only get active alerts
+        .orderBy('timestamp', descending: true)
         .snapshots();
+  }
+
+  // Alert ko hal (resolve) karna jab parent respond kare
+  Future<void> resolveAlert(String alertId) async {
+    await _db.collection('alerts').doc(alertId).update({'status': 'resolved'});
   }
 
   // Bachay ki app ke liye live alerts

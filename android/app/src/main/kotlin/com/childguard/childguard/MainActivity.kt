@@ -99,6 +99,17 @@ class MainActivity : FlutterActivity() {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     startActivity(intent)
                     result.success(true)
+                } else if (call.method == "stopVibration") {
+                    try {
+                        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                        vibrator.cancel()
+                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                        notificationManager.cancel(100) // Panic Alert ID
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e("ChildGuard", "Stop vibration failed: ${e.message}")
+                        result.success(false)
+                    }
                 } else if (call.method == "bringToForeground") {
                     bringToForeground()
                     result.success(true)
@@ -122,10 +133,11 @@ class MainActivity : FlutterActivity() {
         if (intent?.getStringExtra("trigger") == "DANGER") {
             val type = intent.getStringExtra("alertType") ?: "panic"
             val message = intent.getStringExtra("alertMessage") ?: "Emergency detected!"
-            initialAlert = mapOf("type" to type, "message" to message)
+            val alertId = intent.getStringExtra("alertId")
+            initialAlert = mapOf("type" to type, "message" to message, "alertId" to alertId ?: "")
             
             // Trigger Flutter event if listener is active
-            eventSink?.success("DANGER|$type|$message")
+            eventSink?.success("DANGER|$type|$message|$alertId")
         }
     }
 
