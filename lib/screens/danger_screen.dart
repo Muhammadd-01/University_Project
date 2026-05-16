@@ -37,12 +37,8 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
     
-    // Agar alert panic (emergency) hai toh continuously vibrate shuru kar do
-    if (widget.type == 'panic') {
-      _vibrationTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-        HapticFeedback.vibrate();
-      });
-    }
+    // NOTE: Native SOS vibration is started by PanicService on the Android side
+    // when the notification is shown. We don't need a separate Dart timer here.
   }
 
   // Screen band hone par animation aur vibration ko rokna
@@ -50,6 +46,7 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
   void dispose() {
     _controller.dispose();
     _vibrationTimer?.cancel();
+    // Stop native vibration and clear notification
     _platform.invokeMethod('stopVibration');
     super.dispose();
   }
@@ -113,7 +110,6 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
               ),
             ),
             const SizedBox(height: 60),
-            // Parent ke respond karne ka button
             ElevatedButton(
               onPressed: () {
                 _vibrationTimer?.cancel();
@@ -129,28 +125,6 @@ class _DangerScreenState extends State<DangerScreen> with SingleTickerProviderSt
                 padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 elevation: 10,
-              ),
-              child: const Text(
-                'I AM RESPONDING',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                _vibrationTimer?.cancel();
-                _platform.invokeMethod('stopVibration');
-                if (widget.alertId != null) {
-                  FirestoreService().resolveAlert(widget.alertId!);
-                }
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white.withOpacity(0.9),
-                foregroundColor: Colors.blueAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                elevation: 5,
               ),
               child: const Text(
                 'I AM COMING',

@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'parent_responding_screen.dart';
 
 // Yeh screen child ko emergency mein use karni hoti hai, yahan panic button hota hai
 class PanicScreen extends StatefulWidget {
@@ -21,11 +24,18 @@ class _PanicScreenState extends State<PanicScreen> {
   int _sentCount = 0; // Kitne logo ko SMS chala gaya
   int _totalContacts = 0; // Total kitne contacts thay
   String _statusText = 'Tap for Emergency!';
+  StreamSubscription? _responseSub; // Parent ke response ka intezar karne ke liye sub
 
   // Power button (ya volume buttons) ko lagatar 3 baar dabane par alert bhejne ka connection
   static const _powerChannel = EventChannel('com.childguard.childguard/power_button');
   // Background mein chupke se SMS bhejne ke liye native connection
   static const _smsChannel = MethodChannel('com.childguard.childguard/sms');
+
+  @override
+  void dispose() {
+    _responseSub?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -74,6 +84,27 @@ class _PanicScreenState extends State<PanicScreen> {
   // Screen par bane laal button ko dabana
   void _handleButtonTap() {
     _sendPanic();
+  }
+
+  // Parent ke resolution (I AM COMING) ka intezar karna
+  void _listenForResponse(String alertId) {
+    _responseSub?.cancel();
+    _responseSub = FirebaseFirestore.instance
+        .collection('alerts')
+        .doc(alertId)
+        .snapshots()
+        .listen((doc) {
+      if (doc.exists && doc.data()?['status'] == 'resolved') {
+        _responseSub?.cancel();
+        if (mounted) {
+          // Panic screen ko band kar ke 'Parent Responding' screen dikhao
+          Navigator.pushReplacement(
+            context, 
+            MaterialPageRoute(builder: (_) => const ParentRespondingScreen())
+          );
+        }
+      }
+    });
   }
 
   /// Khamoshi se (bina SMS app khole) SMS bhejna native Android ke zariye
@@ -143,7 +174,10 @@ class _PanicScreenState extends State<PanicScreen> {
           alertMsg += 'Panic button pressed manually!';
         }
         
-        await _fs.sendAlert('panic', widget.uid, user['connectedTo'], alertMsg);
+        final alertId = await _fs.sendAlert('panic', widget.uid, user['connectedTo'], alertMsg);
+        if (alertId != null) {
+          _listenForResponse(alertId);
+        }
         
         // 2. Apni live location nikalna aur parent ke set kiye gaye contacts mangwana dono kaam ek sath (parallel) karna
         if (mounted) setState(() => _statusText = 'Updating location & contacts...');

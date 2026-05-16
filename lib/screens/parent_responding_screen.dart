@@ -1,8 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 
-class ParentRespondingScreen extends StatelessWidget {
+class ParentRespondingScreen extends StatefulWidget {
   const ParentRespondingScreen({super.key});
+
+  @override
+  State<ParentRespondingScreen> createState() => _ParentRespondingScreenState();
+}
+
+class _ParentRespondingScreenState extends State<ParentRespondingScreen> {
+  Timer? _vibrationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Reassuring vibration pattern (short pulses)
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+      HapticFeedback.lightImpact();
+    });
+  }
+
+  @override
+  void dispose() {
+    _vibrationTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

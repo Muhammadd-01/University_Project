@@ -92,16 +92,19 @@ class FirestoreService {
     return doc.data();
   }
 
-  // Emergency (Danger) ka message database mein daalna
-  Future<void> sendAlert(String type, String senderId, String parentId, String message) async {
+  // Emergency alert bhej dena (Firestore collection 'alerts' mein)
+  Future<String?> sendAlert(String type, String childId, String parentId, String message) async {
     final alertData = {
-      'type': type, 'senderId': senderId, 'parentId': parentId,
-      'message': message, 'timestamp': FieldValue.serverTimestamp(),
+      'type': type,
+      'childId': childId,
+      'parentId': parentId,
+      'message': message,
+      'timestamp': FieldValue.serverTimestamp(),
       'status': 'active', // Mark alert as active initially
     };
     
     // Alert bhej do
-    await _db.collection('alerts').add(alertData);
+    final docRef = await _db.collection('alerts').add(alertData);
     
     // Agar ami aur abu dono link hain, toh dosre (Co-parent) ko bhi alert bhejo
     final parent = await getUser(parentId);
@@ -110,6 +113,8 @@ class FirestoreService {
       mirroredData['parentId'] = parent['coParent'];
       await _db.collection('alerts').add(mirroredData);
     }
+
+    return docRef.id;
   }
 
   // Parent ki app ke liye live (real-time) alerts mangwana

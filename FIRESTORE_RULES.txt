@@ -50,8 +50,9 @@ service cloud.firestore {
       // (Child panic bhejta hai, system boundary alert bhejta hai)
       allow create: if request.auth != null;
 
-      // Alerts update ya delete nahi ho sakte (safety ke liye)
-      allow update, delete: if false;
+      // Alerts update karne ki permission (takay parent alert ko 'resolved' mark kar sake)
+      allow update: if request.auth != null;
+      allow delete: if false;
     }
   }
 }

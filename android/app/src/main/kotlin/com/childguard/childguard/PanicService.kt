@@ -58,6 +58,17 @@ class PanicService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "STOP_ALERTS") {
+            try {
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                vibrator.cancel()
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                notificationManager.cancel(100)
+            } catch (e: Exception) {
+                Log.e("PanicService", "Error stopping alerts: ${e.message}")
+            }
+            return START_NOT_STICKY
+        }
         Log.d(TAG, "Service onStartCommand called")
         // Always refresh listeners to pick up new UID/role/parentId from SharedPreferences
         startAlertListenerIfParent()

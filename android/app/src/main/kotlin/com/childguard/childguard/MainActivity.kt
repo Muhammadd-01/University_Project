@@ -101,10 +101,19 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 } else if (call.method == "stopVibration") {
                     try {
+                        // Stop any vibration in MainActivity
                         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
                         vibrator.cancel()
+                        
+                        // Stop PanicService activities
+                        val intent = Intent(this, PanicService::class.java)
+                        intent.action = "STOP_ALERTS"
+                        startService(intent)
+                        
+                        // Clear notification 100 just in case
                         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                        notificationManager.cancel(100) // Panic Alert ID
+                        notificationManager.cancel(100)
+                        
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e("ChildGuard", "Stop vibration failed: ${e.message}")

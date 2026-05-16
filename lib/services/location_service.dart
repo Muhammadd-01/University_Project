@@ -3,18 +3,27 @@ import 'package:geolocator/geolocator.dart';
 
 // Ye class phone ke GPS se location nikalne aur doori (distance) napne ka kaam karti hai
 class LocationService {
+  bool _isRequesting = false;
+
   // Permission check karna aur agar na ho toh user se maangna
   Future<bool> handlePermission() async {
-    // Agar mobile ki apni Location Service (GPS) band hai
-    if (!await Geolocator.isLocationServiceEnabled()) return false;
-    
-    var perm = await Geolocator.checkPermission(); // Permission check karo
-    if (perm == LocationPermission.denied) { // Agar inkaar kia hua hai
-      perm = await Geolocator.requestPermission(); // Dobara ijazat maango
-      if (perm == LocationPermission.denied) return false;
+    if (_isRequesting) return false;
+    _isRequesting = true;
+
+    try {
+      // Agar mobile ki apni Location Service (GPS) band hai
+      if (!await Geolocator.isLocationServiceEnabled()) return false;
+      
+      var perm = await Geolocator.checkPermission(); // Permission check karo
+      if (perm == LocationPermission.denied) { // Agar inkaar kia hua hai
+        perm = await Geolocator.requestPermission(); // Dobara ijazat maango
+        if (perm == LocationPermission.denied) return false;
+      }
+      // Agar humesha ke liye band kar di hai permission
+      return perm != LocationPermission.deniedForever;
+    } finally {
+      _isRequesting = false;
     }
-    // Agar humesha ke liye band kar di hai permission
-    return perm != LocationPermission.deniedForever;
   }
 
   // Abhi ki taza GPS location maloom karna

@@ -52,8 +52,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _initializeApp();
+  }
+
+  void _initializeApp() async {
     _loadProfile();
-    _initNotifications();
+    await _initNotifications();
     _startTracking();
     _listenToNativeEvents();
     _checkInitialAlert();
@@ -90,23 +94,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Notifications bhejne ke liye permissions aur settings
-  void _initNotifications() async {
+  Future<void> _initNotifications() async {
     const AndroidInitializationSettings android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings settings = InitializationSettings(android: android);
+    const DarwinInitializationSettings ios = DarwinInitializationSettings();
+    const InitializationSettings settings = InitializationSettings(
+      android: android,
+      iOS: ios,
+    );
     await _notifications.initialize(settings: settings);
     
     // Parent ko sirf notifications ki permission chahiye
     if (widget.role == 'parent') {
       await Permission.notification.request();
-      await Permission.systemAlertWindow.request(); // Danger screen pop up ke liye
+      if (Theme.of(context).platform == TargetPlatform.android) {
+        await Permission.systemAlertWindow.request(); // Danger screen pop up ke liye
+      }
     } 
-    // Child ko location ki permissions chahiye
+    // Child ko notification permission chahiye
     else if (widget.role == 'child') {
       await Permission.notification.request();
-      var status = await Permission.location.request();
-      if (status.isGranted) {
-        await Permission.locationAlways.request(); // Background me location ke liye
-      }
     }
   }
 
@@ -214,9 +220,14 @@ class _HomeScreenState extends State<HomeScreen> {
         final data = doc.data() as Map<String, dynamic>;
         final status = data['status'];
         final alertId = doc.id;
+        final timestamp = data['timestamp'] as Timestamp?;
         
+        // Agar alert pichle 5 minutes me aya hai (taake purane alerts na show hon)
+        final isRecent = timestamp != null && 
+            (DateTime.now().difference(timestamp.toDate()).inMinutes).abs() < 5;
+
         // Agar parent ne resolve (respond) kar diya hai aur humne pehle nahi dikhaya
-        if (status == 'resolved' && !_seenResolvedAlerts.contains(alertId)) {
+        if (status == 'resolved' && isRecent && !_seenResolvedAlerts.contains(alertId)) {
           _seenResolvedAlerts.add(alertId);
           _showParentRespondingDialog();
         }
@@ -226,14 +237,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isShowingRespondingScreen = false;
 
-  void _showParentRespondingDialog() {
+  void _showParentRespondingDialog() async {
     if (_isShowingRespondingScreen) return;
     _isShowingRespondingScreen = true;
+
+    // Show a high-priority notification so child knows parent responded
+    final androidDetails = AndroidNotificationDetails(
+      'ResponseChannel', 
+      '🚨 PARENT RESPONDING',
+      importance: Importance.max,
+      priority: Priority.high,
+      fullScreenIntent: true,
+      ongoing: false,
+    );
     
-    Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => const ParentRespondingScreen())
-    ).then((_) => _isShowingRespondingScreen = false);
+    await _notifications.show(
+      id: 200, 
+      title: '✅ PARENT IS COMING!', 
+      body: 'Your parent has seen your alert and is on the way.', 
+      notificationDetails: NotificationDetails(android: androidDetails)
+    );
+
+    // Bring app to foreground if in background
+    try {
+      await _platform.invokeMethod('bringToForeground');
+    } catch (e) {
+      debugPrint('Bring to foreground error: $e');
+    }
+    
+    if (mounted) {
+      await Navigator.push(
+        context, 
+        MaterialPageRoute(builder: (_) => const ParentRespondingScreen())
+      );
+    }
+    _isShowingRespondingScreen = false;
   }
 
   bool _isShowingDanger = false;
